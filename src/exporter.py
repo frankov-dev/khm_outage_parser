@@ -53,19 +53,26 @@ class JsonExporter:
         self.parser = parser or Parser()
         self.max_days_history = max_days_history
 
-    def _load_existing_schedules(self) -> dict[str, Any]:
-        """Load previously saved schedules to preserve history across runs."""
+    def _load_existing_payload(self) -> Optional[dict[str, Any]]:
+        """Load previously saved payload from outages.json if available."""
         outages_file = self.output_dir / "outages.json"
         if not outages_file.exists():
-            return {}
+            return None
         try:
             with outages_file.open("r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, dict) and isinstance(data.get("schedules"), dict):
-                return data["schedules"]
+                return data
         except (OSError, json.JSONDecodeError) as e:
             logger.warning(f"Could not read existing {outages_file}: {e}")
-        return {}
+        return None
+
+    def _load_existing_schedules(self) -> dict[str, Any]:
+        """Load previously saved schedules to preserve history across runs."""
+        payload = self._load_existing_payload()
+        if payload is None:
+            return {}
+        return payload["schedules"]
 
     def run(self) -> Optional[dict[str, Any]]:
         """
@@ -87,7 +94,11 @@ class JsonExporter:
             logger.warning("No schedule blocks could be extracted from hoe.com.ua")
             return None
 
-        schedules = self._load_existing_schedules()
+        existing_payload = self._load_existing_payload()
+        existing_schedules: dict[str, Any] = (
+            existing_payload["schedules"] if existing_payload is not None else {}
+        )
+        schedules = dict(existing_schedules)
         updated_dates: list[str] = []
         seen_in_run: set[str] = set()
 
@@ -130,6 +141,15 @@ class JsonExporter:
         sorted_dates = sorted(schedules.keys(), reverse=True)[: self.max_days_history]
         trimmed_schedules = {d: schedules[d] for d in sorted_dates}
 
+        latest_path = self.output_dir / "latest.json"
+        if (
+            existing_payload is not None
+            and trimmed_schedules == existing_schedules
+            and latest_path.exists()
+        ):
+            logger.info("Schedules unchanged; skipping JSON overwrite.")
+            return existing_payload
+
         now_iso = datetime.now(KYIV_TZ).isoformat()
         payload = {
             "source": self.scraper.URL,
@@ -156,7 +176,6 @@ class JsonExporter:
             "operational_message": latest_schedule["operational_message"],
             "queues": latest_schedule["queues"],
         }
-        latest_path = self.output_dir / "latest.json"
         with latest_path.open("w", encoding="utf-8") as f:
             json.dump(latest_payload, f, ensure_ascii=False, indent=2)
             f.write("\n")

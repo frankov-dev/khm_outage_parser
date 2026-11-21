@@ -115,3 +115,57 @@ def test_exporter_keeps_first_newest_block_for_duplicate_date(tmp_path):
     q11 = result["schedules"]["2026-11-07"]["queues"]["1.1"]
     assert q11["intervals"] == [{"start": "10:00", "end": "14:00", "type": "base"}]
 
+
+def test_exporter_skips_overwrite_when_schedules_unchanged(tmp_path):
+    scraper = Scraper()
+    scraper.fetch = MagicMock(return_value=SAMPLE_HTML)
+
+    exporter = JsonExporter(output_dir=tmp_path, scraper=scraper, parser=Parser())
+    first_result = exporter.run()
+    assert first_result is not None
+
+    outages_file = tmp_path / "outages.json"
+    latest_file = tmp_path / "latest.json"
+    outages_before = outages_file.read_text(encoding="utf-8")
+    latest_before = latest_file.read_text(encoding="utf-8")
+
+    second_result = exporter.run()
+    assert second_result == first_result
+    assert outages_file.read_text(encoding="utf-8") == outages_before
+    assert latest_file.read_text(encoding="utf-8") == latest_before
+
+
+def test_exporter_rewrites_when_latest_json_missing(tmp_path):
+    scraper = Scraper()
+    scraper.fetch = MagicMock(return_value=SAMPLE_HTML)
+
+    exporter = JsonExporter(output_dir=tmp_path, scraper=scraper, parser=Parser())
+    assert exporter.run() is not None
+
+    latest_file = tmp_path / "latest.json"
+    latest_file.unlink()
+    assert not latest_file.exists()
+
+    second_result = exporter.run()
+    assert second_result is not None
+    assert latest_file.exists()
+
+
+def test_exporter_overwrites_when_schedule_changes(tmp_path):
+    scraper = Scraper()
+    scraper.fetch = MagicMock(return_value=SAMPLE_HTML)
+
+    exporter = JsonExporter(output_dir=tmp_path, scraper=scraper, parser=Parser())
+    first_result = exporter.run()
+    assert first_result is not None
+
+    updated_html = SAMPLE_HTML.replace("22:00-24:00", "21:00-24:00")
+    scraper.fetch = MagicMock(return_value=updated_html)
+
+    second_result = exporter.run()
+    assert second_result is not None
+    assert second_result["last_updated"] != first_result["last_updated"]
+    q21 = second_result["schedules"]["2026-11-07"]["queues"]["2.1"]
+    assert q21["total_hours_off"] == 3.0
+
+
