@@ -1,6 +1,6 @@
-# Khmelnytskyi Outage JSON Parser (GitHub Pages)
+# Khmelnytskyi Outage JSON Parser
 
-Легковаговий скрапер і парсер графіків погодинних відключень електроенергії (ГПВ) з сайту [hoe.com.ua](https://hoe.com.ua/page/pogodinni-vidkljuchennja), який зберігає результати у JSON-файли в папці `docs/` та автоматично публікує їх на **GitHub Pages** за допомогою GitHub Actions.
+Легковаговий скрапер і парсер графіків погодинних відключень електроенергії (ГПВ) з сайту [hoe.com.ua](https://hoe.com.ua/page/pogodinni-vidkljuchennja), який автоматично зберігає актуальні дані у JSON-файли в папці `docs/` через **GitHub Actions**.
 
 ---
 
@@ -9,14 +9,12 @@
 ```text
 khm_outage_parser/
 ├── .github/workflows/
-│   └── update_and_deploy.yml   # Автоматичний запуск кожні 30 хв + деплой на GitHub Pages
+│   └── update_and_deploy.yml   # Автоматичний запуск кожні 30 хв + коміт JSON у репо
 ├── src/
 │   ├── scraper.py              # Скрапер hoe.com.ua (з ретраями та news fallback)
 │   ├── parser.py               # Парсер розкладу, інтервалів та оперативних змін
 │   └── exporter.py             # Збереження результатів у JSON з історією
-├── docs/                       # Публічна папка для GitHub Pages
-│   ├── .nojekyll
-│   ├── index.html              # Прев'ю сторінка з посиланнями на JSON
+├── docs/
 │   ├── outages.json            # Усі доступні дати (до 14 днів)
 │   └── latest.json             # Найсвіжіший графік
 ├── tests/                      # Юніт-тести
@@ -27,8 +25,6 @@ khm_outage_parser/
 ---
 
 ## 🚀 Локальний запуск
-
-Можна використати вже існуюче `.venv` або створити нове:
 
 ```powershell
 python -m venv .venv
@@ -42,29 +38,21 @@ python run.py
 pytest -v
 ```
 
-Після запуску в папці `docs/` з'являться/оновляться файли:
-- `docs/outages.json` — повний JSON з усіма датами
-- `docs/latest.json` — JSON тільки з останньою актуальною датою
-
 ---
 
-## 🌐 Публікація на GitHub Pages
+## 📱 Використання в Android / клієнті (Raw JSON)
 
-1. Створіть новий репозиторій на GitHub та запуште цей проєкт:
-   ```powershell
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin https://github.com/<username>/<repo-name>.git
-   git push -u origin main
-   ```
-2. У репозиторії відкрийте **Settings → Pages → Build and deployment → Source** та оберіть **GitHub Actions**.
-3. Workflow `.github/workflows/update_and_deploy.yml` автоматично запуститься при пуші (або вручну через вкладку **Actions → Run workflow**) і далі оновлюватиме JSON **кожні 30 хвилин**.
-4. Ваші JSON-файли будуть доступні за адресами (з підтримкою CORS):
-   - `https://<username>.github.io/<repo-name>/latest.json`
-   - `https://<username>.github.io/<repo-name>/outages.json`
-   - `https://<username>.github.io/<repo-name>/` — веб-перегляд
+Після пушу в публічний репозиторій на GitHub workflow автоматично оновлюватиме файли **кожні 30 хвилин**.
+Стягувати JSON напряму можна за URL:
+
+- **Останній графік:**
+  ```text
+  https://raw.githubusercontent.com/<username>/<repo-name>/main/docs/latest.json
+  ```
+- **Усі доступні дати (історія до 14 днів):**
+  ```text
+  https://raw.githubusercontent.com/<username>/<repo-name>/main/docs/outages.json
+  ```
 
 ---
 
