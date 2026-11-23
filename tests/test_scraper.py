@@ -11,7 +11,9 @@ from src.scraper import Scraper
 
 @pytest.fixture
 def scraper():
-    return Scraper()
+    s = Scraper()
+    s.RETRY_BACKOFF_SECONDS = 0
+    return s
 
 
 class TestScraperDateExtraction:
@@ -30,6 +32,14 @@ class TestScraperDateExtraction:
         assert scraper.extract_date("ГПВ-15.01.26") == "2026-01-15"
         assert scraper.extract_date("ГПВ_30.06.2026") == "2026-06-30"
         assert scraper.extract_date("ГПВ 17102026") == "2026-10-17"
+
+    def test_extract_date_ignores_parenthetical_update_timestamp(self, scraper):
+        text = "За розпорядженням НЕК «Укренерго» оновлено графік на 16 листопада (оновлено о 23:00, 15.11.2026)."
+        assert scraper.extract_date(text) == "2026-11-16"
+
+    def test_extract_date_corrects_editorial_year_typo(self, scraper):
+        # Real hoe.com.ua typo from Oct 17, 2026: alt="ГПВ 17102027 оновлено 2"
+        assert scraper.extract_date("ГПВ 17102027 оновлено 2") == "2026-10-17"
 
     def test_extract_date_invalid(self, scraper):
         assert scraper.extract_date("") is None
@@ -91,6 +101,52 @@ class TestScraperBlockExtraction:
         assert blocks[0]["date"] == "2026-11-07"
         assert blocks[1]["date"] == "2026-11-08"
 
+    def test_splits_multiple_updates_without_hr_separator(self, scraper):
+        html = """
+        <div class="post">
+            <p>За розпорядженням НЕК «Укренерго» оновлено графік погодинних відключень (ГПВ) на 15 листопада (з 17:30).</p>
+            <p>Підчерга 1.1 – 19:00-22:00.</p>
+            <p>За розпорядженням НЕК «Укренерго» 15.11.2026 р. на Хмельниччині будуть застосовані графіки погодинних відключень (ГПВ).</p>
+            <p>Підчерга 1.1 – 16:00-19:00.</p>
+        </div>
+        """
+        blocks = scraper.extract_blocks(html)
+        assert len(blocks) == 2
+        assert "19:00-22:00" in blocks[0]["schedule_text"]
+        assert "16:00-19:00" in blocks[1]["schedule_text"]
+
+    def test_strips_boilerplate_disclaimers_from_extras(self, scraper):
+        html = """
+        <div class="post">
+            <p>За розпорядженням НЕК «Укренерго» 18.11.2026 р. будуть застосовані графіки погодинних відключень (ГПВ).</p>
+            <p>Підчерга 1.1 – 06:00-10:00.</p>
+            <p>Для промислових споживачів діятиме графік обмеження споживання електричної потужності.</p>
+            <p>Наголошуємо, що головною причиною запровадження графіків обмеження та відключення електропостачання є ракетно-дронові обстріли з боку ворога.</p>
+            <p>Зверніть увагу, це прогноз відключень.</p>
+        </div>
+        """
+        blocks = scraper.extract_blocks(html)
+        assert len(blocks) == 1
+        assert "Наголошуємо" not in blocks[0]["extras_text"]
+        assert "Для промислових" not in blocks[0]["extras_text"]
+        assert "За розпорядженням" in blocks[0]["extras_text"]
+
+    def test_find_news_schedule_links_skips_faq_and_articles(self, scraper):
+        news_html = """
+        <html><body>
+            <a href="/post/korotko-pro-vazhlive-chi-vigidno-at-hmelnitskoblenergo-vidkljuchati-svitlo.html">Чи вигідно відключати світло?</a>
+            <a href="/post/chomu-grafiki-zminjujutsjapo-kilka-raziv-na-den.html">Чому графіки змінюються по кілька разів на день?</a>
+            <a href="/post/pitannjavidpovid-grafiki-pogodinnih-vidkljuchen-gpv.html">#ПитанняВідповідь. Графіки погодинних відключень (ГПВ)</a>
+            <a href="/post/prognoz-gpv-na-23-listopada.html">Прогноз ГПВ на 23 листопада (ОНОВЛЕНО, з 11:00)</a>
+            <a href="/post/pogodinni-vidkljuchennja-na-18-listopada.html">Погодинні відключення на 18 листопада</a>
+        </body></html>
+        """
+        links = scraper.find_news_schedule_links(news_html)
+        assert links == [
+            "https://hoe.com.ua/post/prognoz-gpv-na-23-listopada.html",
+            "https://hoe.com.ua/post/pogodinni-vidkljuchennja-na-18-listopada.html",
+        ]
+
     def test_empty_or_missing_post(self, scraper):
         assert scraper.extract_blocks("<html><body><div>Немає розкладу</div></body></html>") == []
 
@@ -128,3 +184,4 @@ class TestScraperNetwork:
         with patch("requests.get", side_effect=requests.RequestException("Timeout")):
             html = scraper.fetch("https://hoe.com.ua")
             assert html is None
+

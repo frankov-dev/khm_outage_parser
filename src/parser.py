@@ -11,6 +11,15 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+ALL_SUBQUEUES: tuple[str, ...] = (
+    "1.1", "1.2",
+    "2.1", "2.2",
+    "3.1", "3.2",
+    "4.1", "4.2",
+    "5.1", "5.2",
+    "6.1", "6.2",
+)
+
 
 class Parser:
     """
@@ -18,6 +27,7 @@ class Parser:
 
     Handles:
         - Modern schedule: "Підчерга 1.1 – 00:00-04:00; 09:00-13:00; 18:00-21:00."
+        - Explicit no-outage lines: "Підчерга 2.1 – вимкнень немає." / "без відключень"
         - Classic schedule: "підчерга 1.1 – з 10:00 до 15:00"
         - Multi-queue lines: "Підчерги 1.1, 1.2 – 00:00-04:00"
         - Earlier start: "розпочнеться раніше – о 09:00", "знеструмлена раніше – о 9:00"
@@ -35,6 +45,14 @@ class Parser:
         re.IGNORECASE
     )
 
+    NO_OUTAGE_PATTERN = re.compile(
+        r'(?:вимкнень|відключень|знеструмлень)\s+немає|без\s+(?:вимкнень|відключень)|не\s+вимикається|скасовано',
+        re.IGNORECASE
+    )
+
+    def __init__(self, ensure_all_queues: bool = True) -> None:
+        self.ensure_all_queues = ensure_all_queues
+
     def parse_block(self, block: dict[str, Any]) -> dict[str, Any]:
         """
         Parse a schedule block for a specific date.
@@ -46,6 +64,7 @@ class Parser:
             {"date": "...", "queues": {"1.1": [...], ...}, "message": "..."}
         """
         queues: dict[str, list[dict[str, Any]]] = {}
+        explicit_no_outage_queues: set[str] = set()
 
         # Parse base schedule text
         schedule_text = block.get("schedule_text", "")
@@ -55,7 +74,7 @@ class Parser:
                 continue
 
             # Check if this line is describing subqueues
-            if re.search(r'підчерг', line, re.IGNORECASE):
+            if re.search(r'підчерг|підчерзі', line, re.IGNORECASE):
                 # Extract all queues mentioned in this line (e.g. 1.1, 1.2)
                 queue_matches = re.findall(r'\b([1-6]\.[1-2])\b', line)
                 if not queue_matches:
@@ -73,17 +92,37 @@ class Parser:
                 if intervals:
                     for queue in queue_matches:
                         queues.setdefault(queue, []).extend(intervals)
+                elif self.NO_OUTAGE_PATTERN.search(line):
+                    for queue in queue_matches:
+                        queues.setdefault(queue, [])
+                        explicit_no_outage_queues.add(queue)
 
         # Parse and apply operational changes
         extras_text = block.get("extras_text", "")
         if extras_text:
             self._apply_changes(extras_text, queues)
 
+        merged_queues = self._merge_intervals(queues)
+        for q in explicit_no_outage_queues:
+            merged_queues.setdefault(q, [])
+
+        # If this is a valid schedule block (has at least one parsed queue),
+        # ensure all 12 standard subqueues (1.1..6.2) exist in the dictionary
+        if self.ensure_all_queues and merged_queues:
+            for q in ALL_SUBQUEUES:
+                merged_queues.setdefault(q, [])
+
         return {
             "date": block["date"],
-            "queues": self._merge_intervals(queues),
-            "message": extras_text.strip() if extras_text and extras_text.strip() else None
+            "queues": merged_queues,
+            "message": self._clean_operational_message(extras_text),
         }
+
+    def _clean_operational_message(self, extras_text: str) -> Optional[str]:
+        """Extract clean operational message without redundant subqueue change bullet lines if header exists."""
+        if not extras_text or not extras_text.strip():
+            return None
+        return extras_text.strip()
 
     def _normalize_time(self, time_str: str) -> str:
         """Normalize time to HH:MM format (e.g., 7:00 -> 07:00, 24:00 -> 24:00)."""
@@ -99,7 +138,11 @@ class Parser:
         text = extras_text.replace("–", "-").replace("—", "-")
 
         # Split into separate entries (bullet points, sentences, semicolons)
-        entries = re.split(r'[;\n]+|(?:\.\s+(?=у\s+підчерг|підчерг[иуа]))', text)
+        entries = re.split(
+            r'[;\n]+|(?:\.\s+(?=у\s+підчерг|підчерг[иуа]|підчерзі))',
+            text,
+            flags=re.IGNORECASE,
+        )
         processed: set[str] = set()
 
         for entry in entries:
@@ -114,8 +157,8 @@ class Parser:
 
             # Pattern 1: Full change / explicit interval
             match = re.search(
-                r'(?:раніше\s*-?\s*о[б]?\s*(\d{1,2}:\d{2}).+?триватиме\s+до\s*(\d{1,2}:\d{2}))|'
-                r'(?:(?:триватим[еу]ть?|знеструмлено|відключення)\s+(?:з|о[б]?)\s*(\d{1,2}:\d{2})\s*(?:до|-)\s*(\d{1,2}:\d{2}))',
+                r'(?:(?:раніше|пізніше)\s*[, -]*\s*о[б]?\s*(\d{1,2}:\d{2}).+?триватиме\s+до\s*(\d{1,2}:\d{2}))|'
+                r'(?:(?:триватим[еу]ть?|знеструмлено|відключення)(?:\s+довше)?\s+(?:з|о[б]?)\s*(\d{1,2}:\d{2})\s*(?:до|-)\s*(\d{1,2}:\d{2}))',
                 entry,
                 re.IGNORECASE
             )
@@ -132,23 +175,24 @@ class Parser:
                         processed.add(f"{q}_full_{start}_{end}")
                 continue
 
-            # Pattern 2: Earlier start "розпочнеться раніше - о 20:00" or "знеструмлена раніше - о 9:00"
+            # Pattern 2: Earlier start "розпочнеться раніше - о 20:00", "почнеться раніше о 10:00", "знеструмлена раніше - о 9:00"
             match = re.search(
-                r'(?:розпочнеться|знеструмлена)\s+раніше\s*-?\s*о[б]?\s*(\d{1,2}:\d{2})',
+                r'(?:розпочнеться|почнеться|починається|знеструмлен[ао])\s+раніше\s*[, -]*\s*о[б]?\s*(\d{1,2}:\d{2})',
                 entry,
                 re.IGNORECASE
             )
             if match:
                 new_start = self._normalize_time(match.group(1))
                 for q in queue_nums:
-                    if f"{q}_start" not in processed and f"{q}_full" not in processed:
+                    key = f"{q}_start_{new_start}"
+                    if key not in processed:
                         queues.setdefault(q, []).append({"start": new_start, "end": None, "type": "change_start"})
-                        processed.add(f"{q}_start")
+                        processed.add(key)
                 continue
 
-            # Pattern 3: Extended end "триватиме довше - до 11:00" or "заживлення розпочнеться о 21:00"
+            # Pattern 3: Extended end "триватиме довше - до 11:00", "триватиме до 14:00", or "заживлення розпочнеться о 21:00"
             match = re.search(
-                r'(?:триватиме\s+довше\s*-?\s*(?:до|заживлення.+?о[б]?)\s*(\d{1,2}:\d{2}))|'
+                r'(?:триватиме(?:\s+довше)?\s*[, -]*\s*(?:до|заживлення.+?о[б]?)\s*(\d{1,2}:\d{2}))|'
                 r'(?:заживлення(?:\s+споживачів)?\s+розпочнеться\s+о[б]?\s*(\d{1,2}:\d{2}))',
                 entry,
                 re.IGNORECASE
@@ -157,9 +201,10 @@ class Parser:
                 raw_time = match.group(1) or match.group(2)
                 new_end = self._normalize_time(raw_time)
                 for q in queue_nums:
-                    if f"{q}_end" not in processed:
+                    key = f"{q}_end_{new_end}"
+                    if key not in processed:
                         queues.setdefault(q, []).append({"start": None, "end": new_end, "type": "change_end"})
-                        processed.add(f"{q}_end")
+                        processed.add(key)
                 continue
 
             # Pattern 4: Extra outage "додатково буде знеструмлено з 16:00 до 18:00"
@@ -177,20 +222,20 @@ class Parser:
         """
         Merge intervals and apply changes to build final schedule.
 
-        Applies change_start/change_end to nearest base intervals,
+        Applies change_start/change_end to nearest valid base intervals,
         merges overlapping intervals, returns clean result.
         """
         result: dict[str, list[dict[str, str]]] = {}
 
         for queue, intervals in queues.items():
-            base = [i for i in intervals if i["type"] == "base" and i["start"] and i["end"]]
+            base = [i.copy() for i in intervals if i["type"] == "base" and i["start"] and i["end"]]
             changes = [i for i in intervals if i["type"] in ("change_start", "change_end")]
             full_changes = [i for i in intervals if i["type"] == "change" and i["start"] and i["end"]]
             extras = [i for i in intervals if i["type"] == "extra" and i["start"] and i["end"]]
 
             base.sort(key=lambda x: self._to_minutes(x["start"]))
 
-            # Apply start/end changes to nearest intervals
+            # Apply start/end changes to nearest valid intervals
             for change in changes:
                 if not base:
                     continue
@@ -205,7 +250,7 @@ class Parser:
 
             # Merge full changes with overlapping base intervals
             for fc in full_changes:
-                merged = False
+                merged_flag = False
                 for bi in base:
                     if self._overlaps(bi, fc):
                         bi_s, bi_e = self._to_minutes(bi["start"]), self._to_minutes(bi["end"])
@@ -214,33 +259,66 @@ class Parser:
                         new_e = bi["end"] if bi_e >= fc_e else fc["end"]
                         bi["start"] = new_s
                         bi["end"] = new_e
-                        merged = True
+                        merged_flag = True
                         break
-                if not merged:
+                if not merged_flag:
                     base.append({"start": fc["start"], "end": fc["end"], "type": "base"})
 
             # Add extras
             base.extend({"start": e["start"], "end": e["end"], "type": "base"} for e in extras)
 
+            # Filter out any invalid intervals where start >= end
+            valid_base = [
+                i for i in base
+                if self._to_minutes(i["start"]) < self._to_minutes(i["end"])
+            ]
+
             # Merge overlapping and sort
-            merged = self._merge_overlapping(base)
+            merged = self._merge_overlapping(valid_base)
             if merged:
                 result[queue] = [{"start": i["start"], "end": i["end"], "type": "base"} for i in merged]
 
         return result
 
     def _find_nearest(self, intervals: list[dict[str, Any]], time: str, field: str) -> Optional[int]:
-        """Find index of interval with nearest time value."""
+        """
+        Find index of interval with nearest time value that keeps start < end valid.
+
+        For field == 'start' (earlier start): prefers intervals starting at or after `time` (or containing `time`)
+        where `end > time`.
+        For field == 'end' (extended end): prefers intervals ending at or before `time` (or containing `time`)
+        where `start < time`.
+        """
         if not intervals:
             return None
 
         time_mins = self._to_minutes(time)
-        best_idx, best_diff = 0, float("inf")
+        best_idx: Optional[int] = None
+        best_score = float("inf")
 
         for i, interval in enumerate(intervals):
-            diff = abs(self._to_minutes(interval[field]) - time_mins)
-            if diff < best_diff:
-                best_idx, best_diff = i, diff
+            s_mins = self._to_minutes(interval["start"])
+            e_mins = self._to_minutes(interval["end"])
+
+            # Guard against creating invalid interval (start >= end)
+            if field == "start" and time_mins >= e_mins:
+                continue
+            if field == "end" and time_mins <= s_mins:
+                continue
+
+            target_mins = s_mins if field == "start" else e_mins
+            diff = abs(target_mins - time_mins)
+
+            # Prefer natural direction:
+            # - "earlier start" means new_start <= old_start
+            # - "extended end" means new_end >= old_end
+            if field == "start" and time_mins > s_mins:
+                diff += 1000
+            elif field == "end" and time_mins < e_mins:
+                diff += 1000
+
+            if diff < best_score:
+                best_idx, best_score = i, diff
 
         return best_idx
 
@@ -283,3 +361,4 @@ class Parser:
                 merged.append(current.copy())
 
         return merged
+

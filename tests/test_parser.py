@@ -3,7 +3,7 @@ Unit tests for outage schedule Parser.
 """
 
 import pytest
-from src.parser import Parser
+from src.parser import ALL_SUBQUEUES, Parser
 
 
 @pytest.fixture
@@ -27,8 +27,7 @@ class TestParserModernFormat:
         }
         res = parser.parse_block(block)
         assert res["date"] == "2026-11-07"
-        assert "1.1" in res["queues"]
-        assert "2.1" in res["queues"]
+        assert set(res["queues"].keys()) == set(ALL_SUBQUEUES)
 
         q1 = res["queues"]["1.1"]
         assert len(q1) == 3
@@ -39,6 +38,26 @@ class TestParserModernFormat:
         q2 = res["queues"]["2.1"]
         assert len(q2) == 3
         assert q2[2] == {"start": "22:00", "end": "24:00", "type": "base"}
+
+        # Unmentioned subqueues default to empty list (no outages)
+        assert res["queues"]["1.2"] == []
+
+    def test_parse_explicit_no_outages_line(self, parser):
+        text = """
+        Підчерга 1.1 – 21:00-24:00.
+        Підчерга 2.1 – вимкнень немає.
+        Підчерга 4.1 – без відключень.
+        """
+        block = {
+            "date": "2026-11-20",
+            "schedule_text": text,
+            "extras_text": ""
+        }
+        res = parser.parse_block(block)
+        assert res["queues"]["1.1"] == [{"start": "21:00", "end": "24:00", "type": "base"}]
+        assert res["queues"]["2.1"] == []
+        assert res["queues"]["4.1"] == []
+        assert len(res["queues"]) == 12
 
     def test_parse_multi_queue_line(self, parser):
         text = "Підчерги 3.1, 3.2 – 04:00-08:00; 13:00-18:00."
@@ -96,6 +115,20 @@ class TestParserOperationalChanges:
         q31 = res["queues"]["3.1"]
         assert q31[1]["start"] == "20:00"
         assert q31[1]["end"] == "24:00"
+
+    def test_earlier_start_never_corrupts_earlier_completed_interval(self, parser):
+        # 12:00 is equidistant (4h) from 08:00 and 16:00, but 08:00-11:00 ends at 11:00 < 12:00
+        base_text = "підчерга 3.1 – 08:00-11:00; 16:00-20:00"
+        extras = "- у підчерги 3.1 відключення почнеться раніше, о 12:00"
+        block = {
+            "date": "2026-11-07",
+            "schedule_text": base_text,
+            "extras_text": extras
+        }
+        res = parser.parse_block(block)
+        q31 = res["queues"]["3.1"]
+        assert q31[0] == {"start": "08:00", "end": "11:00", "type": "base"}
+        assert q31[1] == {"start": "12:00", "end": "20:00", "type": "base"}
 
     def test_extended_end(self, parser):
         base_text = "підчерга 4.1 – 04:00-08:00; 13:00-17:00"
@@ -165,3 +198,4 @@ class TestParserEdgeCases:
         res = parser.parse_block(block)
         assert res["queues"] == {}
         assert res["message"] is None
+
