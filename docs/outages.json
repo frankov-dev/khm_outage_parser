@@ -1,6 +1,6 @@
 {
   "source": "https://hoe.com.ua/page/pogodinni-vidkljuchennja",
-  "last_updated": "2026-11-22T22:16:23.054521+02:00",
+  "last_updated": "2026-11-23T11:42:17.879331+02:00",
   "available_dates": [
     "2026-11-23",
     "2026-11-22",
@@ -10,7 +10,7 @@
   "schedules": {
     "2026-11-23": {
       "date": "2026-11-23",
-      "operational_message": "За розпорядженням НЕК «Укренерго» 23.11.2026 р. на Хмельниччині будуть застосовані графіки погодинних відключень (ГПВ).",
+      "operational_message": "За розпорядженням НЕК «Укренерго» оновлено графік погодинних відключень (ГПВ) на 23 листопада (оновлено з 11:00).",
       "queues": {
         "1.1": {
           "intervals": [
@@ -85,22 +85,32 @@
         "3.1": {
           "intervals": [
             {
-              "start": "15:00",
-              "end": "20:00",
+              "start": "11:00",
+              "end": "13:00",
               "type": "base"
-            }
-          ],
-          "total_hours_off": 5.0
-        },
-        "3.2": {
-          "intervals": [
+            },
             {
               "start": "15:00",
               "end": "20:00",
               "type": "base"
             }
           ],
-          "total_hours_off": 5.0
+          "total_hours_off": 7.0
+        },
+        "3.2": {
+          "intervals": [
+            {
+              "start": "11:00",
+              "end": "13:00",
+              "type": "base"
+            },
+            {
+              "start": "15:00",
+              "end": "20:00",
+              "type": "base"
+            }
+          ],
+          "total_hours_off": 7.0
         },
         "4.1": {
           "intervals": [
@@ -155,7 +165,7 @@
         "5.2": {
           "intervals": [
             {
-              "start": "06:00",
+              "start": "07:00",
               "end": "10:00",
               "type": "base"
             },
@@ -165,7 +175,7 @@
               "type": "base"
             }
           ],
-          "total_hours_off": 8.0
+          "total_hours_off": 7.0
         },
         "6.1": {
           "intervals": [
@@ -190,7 +200,7 @@
         "6.2": {
           "intervals": [
             {
-              "start": "06:00",
+              "start": "07:00",
               "end": "10:00",
               "type": "base"
             },
@@ -200,7 +210,7 @@
               "type": "base"
             }
           ],
-          "total_hours_off": 9.0
+          "total_hours_off": 8.0
         }
       }
     },
