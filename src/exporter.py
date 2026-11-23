@@ -347,25 +347,35 @@ class JsonExporter:
                 _add_revision(rev)
 
             # 2. If there was an existing schedule saved for this date in outages.json,
-            # preserve it (unless the page already provided newer+older blocks with the same message)
-            # and its previous_schedules in case hoe.com.ua removed older blocks
+            # preserve it and its previous_schedules ONLY for announcements that are no longer
+            # present on the current page (prevents keeping stale/corrupted duplicates when
+            # the same operational_message was freshly recomputed from the page).
+            recomputed_messages = {
+                snap.get("operational_message")
+                for snap in effective_snapshots
+                if snap.get("operational_message")
+            }
             if isinstance(old_saved, dict):
-                same_msg_recomputed = (
-                    bool(older_on_page)
-                    and old_saved.get("operational_message") == newest["operational_message"]
-                )
-                if "queues" in old_saved and not same_msg_recomputed:
+                old_msg = old_saved.get("operational_message")
+                if "queues" in old_saved and (
+                    not recomputed_messages or old_msg not in recomputed_messages
+                ):
                     _add_revision(self._build_revision_entry(old_saved))
+                elif (
+                    "queues" in old_saved
+                    and not older_on_page
+                    and old_saved.get("queues") != newest["queues"]
+                ):
+                    # Same single-block page edited in place without changing header text
+                    _add_revision(self._build_revision_entry(old_saved))
+
                 for old_rev in old_saved.get("previous_schedules", []):
-                    if (
-                        isinstance(old_rev, dict)
-                        and "queues" in old_rev
-                        and not (
-                            bool(older_on_page)
-                            and old_rev.get("operational_message") == newest["operational_message"]
-                        )
-                    ):
-                        _add_revision(self._build_revision_entry(old_rev))
+                    if not (isinstance(old_rev, dict) and "queues" in old_rev):
+                        continue
+                    rev_msg = old_rev.get("operational_message")
+                    if recomputed_messages and rev_msg in recomputed_messages:
+                        continue
+                    _add_revision(self._build_revision_entry(old_rev))
 
             schedule_entry: dict[str, Any] = {
                 "date": date_str,

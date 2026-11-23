@@ -356,4 +356,54 @@ def test_exporter_applies_standalone_delta_on_top_of_saved_outages_json(tmp_path
     assert res2 == res
 
 
+def test_exporter_replaces_stale_duplicate_revision_when_recomputed_from_page(tmp_path):
+    """Stale corrupted previous_schedules entry with same operational_message must not be duplicated."""
+    stale_outages = {
+        "source": Scraper.URL,
+        "last_updated": "2026-11-23T22:00:00+02:00",
+        "available_dates": ["2026-11-23"],
+        "schedules": {
+            "2026-11-23": {
+                "date": "2026-11-23",
+                "operational_message": "За розпорядженням НЕК «Укренерго» оновлено графік на 23 листопада (оновлено з 21:30).\nДодатково години відсутності електроенергії:",
+                "queues": {"1.1": {"intervals": [], "total_hours_off": 0.0}},
+                "previous_schedules": [
+                    {
+                        "operational_message": "За розпорядженням НЕК «Укренерго» оновлено графік на 23 листопада (оновлено з 20:00).",
+                        "queues": {"1.1": {"intervals": [{"start": "18:00", "end": "22:00", "type": "base"}], "total_hours_off": 4.0}},
+                    }
+                ],
+            }
+        },
+    }
+    (tmp_path / "outages.json").write_text(json.dumps(stale_outages), encoding="utf-8")
+
+    html = """
+    <div class="post">
+        <p>За розпорядженням НЕК «Укренерго» оновлено графік на 23 листопада (оновлено з 21:30).</p>
+        <p>Додатково години відсутності електроенергії:</p>
+        <p>Підчерга 5.2 – 22:00-24:00.</p>
+        <hr/>
+        <p>За розпорядженням НЕК «Укренерго» оновлено графік на 23 листопада (оновлено з 20:00).</p>
+        <p>Підчерга 1.1 – 18:00-22:00.<br/>Підчерга 5.2 – без відключень.</p>
+        <hr/>
+        <p>За розпорядженням НЕК «Укренерго» оновлено графік на 23 листопада (оновлено з 11:00).</p>
+        <p>Підчерга 1.1 – 10:00-15:00; 18:00-22:00.<br/>Підчерга 5.2 – 07:00-10:00.</p>
+    </div>
+    """
+    scraper = Scraper()
+    scraper.fetch = MagicMock(return_value=html)
+    scraper.fetch_recent_news_blocks = MagicMock(return_value=[])
+
+    exporter = JsonExporter(output_dir=tmp_path, scraper=scraper, parser=Parser())
+    res = exporter.run()
+    assert res is not None
+
+    prev = res["schedules"]["2026-11-23"]["previous_schedules"]
+    # Exactly 2 clean revisions (20:00 and 11:00), NO stale 4.0h duplicate of 20:00!
+    assert len(prev) == 2
+    assert prev[0]["queues"]["1.1"]["total_hours_off"] == 9.0
+    assert prev[1]["queues"]["1.1"]["total_hours_off"] == 9.0
+
+
 
