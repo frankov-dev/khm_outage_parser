@@ -50,6 +50,16 @@ class Parser:
         re.IGNORECASE
     )
 
+    ADDITIVE_HEADER_PATTERN = re.compile(
+        r'\bдодатков[оіа]\b|збільшено\s+обсяг',
+        re.IGNORECASE
+    )
+
+    EFFECTIVE_FROM_PATTERN = re.compile(
+        r'\((?:[^)]*?(?:оновлено|з|о[б]?)\s*)?(\d{1,2}:\d{2})[^)]*\)',
+        re.IGNORECASE
+    )
+
     def __init__(self, ensure_all_queues: bool = True) -> None:
         self.ensure_all_queues = ensure_all_queues
 
@@ -61,10 +71,22 @@ class Parser:
             block: {"date": "YYYY-MM-DD", "schedule_text": "...", "extras_text": "..."}
 
         Returns:
-            {"date": "...", "queues": {"1.1": [...], ...}, "message": "..."}
+            {
+                "date": "...",
+                "queues": {"1.1": [...], ...},
+                "mentioned_queues": ["5.2", "6.2"],
+                "is_additive": False,
+                "effective_from": "20:00" | None,
+                "message": "..."
+            }
         """
         queues: dict[str, list[dict[str, Any]]] = {}
         explicit_no_outage_queues: set[str] = set()
+        mentioned_queues: list[str] = []
+
+        def _record_mentioned(q: str) -> None:
+            if q not in mentioned_queues:
+                mentioned_queues.append(q)
 
         # Parse base schedule text
         schedule_text = block.get("schedule_text", "")
@@ -92,15 +114,19 @@ class Parser:
                 if intervals:
                     for queue in queue_matches:
                         queues.setdefault(queue, []).extend(intervals)
+                        _record_mentioned(queue)
                 elif self.NO_OUTAGE_PATTERN.search(line):
                     for queue in queue_matches:
                         queues.setdefault(queue, [])
                         explicit_no_outage_queues.add(queue)
+                        _record_mentioned(queue)
 
         # Parse and apply operational changes
         extras_text = block.get("extras_text", "")
         if extras_text:
             self._apply_changes(extras_text, queues)
+            for q in queues:
+                _record_mentioned(q)
 
         merged_queues = self._merge_intervals(queues)
         for q in explicit_no_outage_queues:
@@ -112,9 +138,19 @@ class Parser:
             for q in ALL_SUBQUEUES:
                 merged_queues.setdefault(q, [])
 
+        is_additive = bool(self.ADDITIVE_HEADER_PATTERN.search(extras_text)) if extras_text else False
+        effective_from: Optional[str] = None
+        if extras_text:
+            eff_match = self.EFFECTIVE_FROM_PATTERN.search(extras_text)
+            if eff_match:
+                effective_from = self._normalize_time(eff_match.group(1))
+
         return {
             "date": block["date"],
             "queues": merged_queues,
+            "mentioned_queues": sorted(mentioned_queues),
+            "is_additive": is_additive,
+            "effective_from": effective_from,
             "message": self._clean_operational_message(extras_text),
         }
 
@@ -321,6 +357,23 @@ class Parser:
                 best_idx, best_score = i, diff
 
         return best_idx
+
+    def to_minutes(self, time_str: str) -> int:
+        """Public wrapper for converting HH:MM to minutes from midnight."""
+        return self._to_minutes(time_str)
+
+    def overlaps(self, i1: dict[str, str], i2: dict[str, str]) -> bool:
+        """Public wrapper for checking whether two intervals overlap."""
+        return self._overlaps(i1, i2)
+
+    def merge_intervals_list(self, intervals: list[dict[str, str]]) -> list[dict[str, str]]:
+        """Public wrapper for merging overlapping/contiguous intervals and sorting chronologically."""
+        valid = [
+            {"start": i["start"], "end": i["end"], "type": i.get("type", "base")}
+            for i in intervals
+            if self._to_minutes(i["start"]) < self._to_minutes(i["end"])
+        ]
+        return self._merge_overlapping(valid)
 
     def _to_minutes(self, time_str: str) -> int:
         """

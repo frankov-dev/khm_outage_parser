@@ -199,3 +199,20 @@ class TestParserEdgeCases:
         assert res["queues"] == {}
         assert res["message"] is None
 
+    def test_additive_delta_metadata_detection(self, parser):
+        block = {
+            "date": "2026-11-23",
+            "schedule_text": "Підчерга 5.2 – 22:00-24:00.\nПідчерга 6.2 – 22:00-24:00.",
+            "extras_text": (
+                "За розпорядженням НЕК «Укренерго» оновлено графік погодинних відключень (ГПВ) "
+                "на 23 листопада (оновлено з 21:30).\n"
+                "Додатково години відсутності електроенергії:"
+            ),
+        }
+        res = parser.parse_block(block)
+        assert res["is_additive"] is True
+        assert res["effective_from"] == "21:30"
+        assert res["mentioned_queues"] == ["5.2", "6.2"]
+        assert res["queues"]["5.2"] == [{"start": "22:00", "end": "24:00", "type": "base"}]
+        assert res["queues"]["6.2"] == [{"start": "22:00", "end": "24:00", "type": "base"}]
+

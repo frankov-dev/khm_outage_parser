@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from src.parser import Parser
+from src.parser import ALL_SUBQUEUES, Parser
 from src.scraper import KYIV_TZ, Scraper
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,75 @@ class JsonExporter:
         return formatted_queues
 
     @staticmethod
+    def _extract_raw_queues(formatted_queues: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
+        """Convert formatted queues dict ({q: {intervals, total_hours_off}}) back to raw intervals dict."""
+        raw: dict[str, list[dict[str, str]]] = {}
+        for q, q_data in formatted_queues.items():
+            if isinstance(q_data, dict) and isinstance(q_data.get("intervals"), list):
+                raw[q] = [i.copy() for i in q_data["intervals"]]
+        return raw
+
+    def _apply_version_to_base(
+        self,
+        base_raw: Optional[dict[str, list[dict[str, str]]]],
+        ver: dict[str, Any],
+    ) -> dict[str, list[dict[str, str]]]:
+        """
+        Apply a chronological schedule version on top of a previous state for the same date.
+
+        Handles 3 hoe.com.ua publication patterns:
+          1. Additive / delta update ("Додатково години відсутності електроенергії" or < 6 queues):
+             keeps all unmentioned queues untouched and merges new intervals into mentioned queues.
+          2. Tail-only mid-day update ("оновлено з HH:MM" where no interval ends before HH:MM):
+             preserves already-finished intervals (end <= HH:MM, non-overlapping) and replaces
+             the rest of the day with the updated intervals.
+          3. Full-day schedule:
+             replaces the day's schedule completely.
+        """
+        ver_raw: dict[str, list[dict[str, str]]] = ver["raw_queues"]
+        mentioned: list[str] = ver.get("mentioned_queues", [])
+        is_additive: bool = ver.get("is_additive", False)
+        effective_from: Optional[str] = ver.get("effective_from")
+
+        if base_raw is None:
+            return {q: [i.copy() for i in ints] for q, ints in ver_raw.items()}
+
+        # 1. Additive / delta update (e.g. "Додатково години відсутності електроенергії: 5.2, 6.2")
+        base_active_queues = sum(1 for ints in base_raw.values() if ints)
+        if is_additive or (0 < len(mentioned) < 6 and base_active_queues >= 6):
+            merged: dict[str, list[dict[str, str]]] = {
+                q: [i.copy() for i in base_raw.get(q, [])] for q in ALL_SUBQUEUES
+            }
+            for q in mentioned:
+                combined = merged.get(q, []) + ver_raw.get(q, [])
+                merged[q] = self.parser.merge_intervals_list(combined)
+            return merged
+
+        # 2. Tail-only mid-day update (e.g. "оновлено з 20:00" with only evening hours listed)
+        if effective_from:
+            cutoff_mins = self.parser.to_minutes(effective_from)
+            has_earlier_intervals = any(
+                self.parser.to_minutes(interval["end"]) < cutoff_mins
+                for ints in ver_raw.values()
+                for interval in ints
+            )
+            if cutoff_mins > 0 and not has_earlier_intervals:
+                merged = {}
+                for q in ALL_SUBQUEUES:
+                    new_ints = [i.copy() for i in ver_raw.get(q, [])]
+                    past_ints = [
+                        i.copy()
+                        for i in base_raw.get(q, [])
+                        if self.parser.to_minutes(i["end"]) <= cutoff_mins
+                        and not any(self.parser.overlaps(i, n) for n in new_ints)
+                    ]
+                    merged[q] = self.parser.merge_intervals_list(past_ints + new_ints)
+                return merged
+
+        # 3. Full-day replacement
+        return {q: [i.copy() for i in ver_raw.get(q, [])] for q in ALL_SUBQUEUES}
+
+    @staticmethod
     def _build_revision_entry(schedule_obj: dict[str, Any]) -> dict[str, Any]:
         """Create a compact revision snapshot (message + queues)."""
         return {
@@ -174,11 +243,13 @@ class JsonExporter:
             if not date_str or not raw_queues:
                 continue
 
-            formatted_queues = self._format_queues(raw_queues)
             blocks_by_date.setdefault(date_str, []).append({
                 "date": date_str,
                 "operational_message": parsed.get("message"),
-                "queues": formatted_queues,
+                "raw_queues": raw_queues,
+                "mentioned_queues": parsed.get("mentioned_queues", []),
+                "is_additive": parsed.get("is_additive", False),
+                "effective_from": parsed.get("effective_from"),
             })
 
         if not blocks_by_date:
@@ -188,8 +259,68 @@ class JsonExporter:
         updated_dates: list[str] = []
 
         for date_str, date_versions in blocks_by_date.items():
-            newest = date_versions[0]
-            older_on_page = [self._build_revision_entry(v) for v in date_versions[1:]]
+            # Replay versions chronologically (oldest -> newest) so additive/delta and
+            # tail-only updates merge cleanly on top of earlier full schedules for the same day
+            chronological = list(reversed(date_versions))
+            old_saved = existing_schedules.get(date_str)
+
+            base_raw: Optional[dict[str, list[dict[str, str]]]] = None
+            first_ver = chronological[0]
+            old_saved_active_queues = (
+                sum(
+                    1
+                    for q_data in old_saved.get("queues", {}).values()
+                    if isinstance(q_data, dict) and q_data.get("intervals")
+                )
+                if isinstance(old_saved, dict) and isinstance(old_saved.get("queues"), dict)
+                else 0
+            )
+            first_is_partial = first_ver.get("is_additive", False) or (
+                0 < len(first_ver.get("mentioned_queues", [])) < 6
+                and old_saved_active_queues >= 6
+            )
+
+            # If the page only has a delta/partial block left, apply it on top of the previously saved schedule
+            if (
+                first_is_partial
+                and isinstance(old_saved, dict)
+                and isinstance(old_saved.get("queues"), dict)
+            ):
+                if old_saved.get("operational_message") == first_ver.get("operational_message"):
+                    # Already applied in a previous run; avoid double-applying
+                    base_raw = self._extract_raw_queues(old_saved["queues"])
+                    chronological = chronological[1:]
+                else:
+                    base_raw = self._extract_raw_queues(old_saved["queues"])
+
+            effective_snapshots: list[dict[str, Any]] = []
+            current_raw = base_raw
+
+            for ver in chronological:
+                current_raw = self._apply_version_to_base(current_raw, ver)
+                effective_snapshots.append({
+                    "date": date_str,
+                    "operational_message": ver.get("operational_message"),
+                    "queues": self._format_queues(current_raw),
+                })
+
+            if not effective_snapshots:
+                # Nothing new to apply (single delta already matched old_saved)
+                if isinstance(old_saved, dict):
+                    effective_snapshots.append({
+                        "date": date_str,
+                        "operational_message": old_saved.get("operational_message"),
+                        "queues": old_saved.get("queues", {}),
+                    })
+                else:
+                    continue
+
+            newest = effective_snapshots[-1]
+            # Order previous snapshots newest-first (excluding the active newest snapshot)
+            older_on_page = [
+                self._build_revision_entry(v)
+                for v in reversed(effective_snapshots[:-1])
+            ]
 
             # Combine older revisions from the current page with any previously saved revisions
             previous_revisions: list[dict[str, Any]] = []
@@ -216,13 +347,24 @@ class JsonExporter:
                 _add_revision(rev)
 
             # 2. If there was an existing schedule saved for this date in outages.json,
-            # preserve it and its previous_schedules in case hoe.com.ua removed older blocks
-            old_saved = existing_schedules.get(date_str)
+            # preserve it (unless the page already provided newer+older blocks with the same message)
+            # and its previous_schedules in case hoe.com.ua removed older blocks
             if isinstance(old_saved, dict):
-                if "queues" in old_saved:
+                same_msg_recomputed = (
+                    bool(older_on_page)
+                    and old_saved.get("operational_message") == newest["operational_message"]
+                )
+                if "queues" in old_saved and not same_msg_recomputed:
                     _add_revision(self._build_revision_entry(old_saved))
                 for old_rev in old_saved.get("previous_schedules", []):
-                    if isinstance(old_rev, dict) and "queues" in old_rev:
+                    if (
+                        isinstance(old_rev, dict)
+                        and "queues" in old_rev
+                        and not (
+                            bool(older_on_page)
+                            and old_rev.get("operational_message") == newest["operational_message"]
+                        )
+                    ):
                         _add_revision(self._build_revision_entry(old_rev))
 
             schedule_entry: dict[str, Any] = {
