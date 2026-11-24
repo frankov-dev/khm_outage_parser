@@ -406,4 +406,141 @@ def test_exporter_replaces_stale_duplicate_revision_when_recomputed_from_page(tm
     assert prev[1]["queues"]["1.1"]["total_hours_off"] == 9.0
 
 
+def test_exporter_handles_plural_additive_header_with_6_queues_and_00_00_end(tmp_path):
+    """Ensure 'Додаткові години...' keeps unmentioned queues even when >=6 queues are updated, and 22:00-00:00 -> 24:00."""
+    html = """
+    <div class="post">
+        <p>За розпорядженням НЕК «Укренерго» оновлено графік погодинних відключень (ГПВ) на 24 листопада (оновлено з\xa0 20:00).</p>
+        <p>Додаткові\xa0години відсутності електроенергії:</p>
+        <p>Підчерга 1.1 - 22:00-24:00.<br/>Підчерга 1.2 - 22:00-24:00.<br/>
+           Підчерга 2.1 - 20:00-22:00.<br/>Підчерга 3.1 - 20:00-22:00.<br/>
+           Підчерга 4.1 - 20:00-22:00.<br/>Підчерга 4.2\xa0- 22:00-00:00.</p>
+        <hr/>
+        <p>За розпорядженням НЕК «Укренерго» 24.11.2026 р. на Хмельниччині будуть застосовані графіки погодинних відключень (ГПВ).</p>
+        <p>Підчерга 1.1 – 04:00-07:00.<br/>Підчерга 1.2 – 01:00-04:00.<br/>
+           Підчерга 2.1 – 12:00-17:00.<br/>Підчерга 2.2 – 12:00-17:00.<br/>
+           Підчерга 3.1 – 06:00-10:00.<br/>Підчерга 3.2 – 06:00-10:00.<br/>
+           Підчерга 4.1 – 06:00-10:00.<br/>Підчерга 4.2 – 07:00-12:00; 16:00-20:00.<br/>
+           Підчерга 5.1 – 16:00-20:00.<br/>Підчерга 5.2 – 17:00-20:00.<br/>
+           Підчерга 6.1 – 22:00-24:00.<br/>Підчерга 6.2 – 18:00-22:00.</p>
+    </div>
+    """
+    scraper = Scraper()
+    scraper.fetch = MagicMock(return_value=html)
+    scraper.fetch_recent_news_blocks = MagicMock(return_value=[])
+
+    exporter = JsonExporter(output_dir=tmp_path, scraper=scraper, parser=Parser())
+    res = exporter.run()
+    assert res is not None
+
+    q = res["schedules"]["2026-11-24"]["queues"]
+    # 4.2 must include 22:00-24:00 (11.0h total)
+    assert q["4.2"]["intervals"] == [
+        {"start": "07:00", "end": "12:00", "type": "base"},
+        {"start": "16:00", "end": "20:00", "type": "base"},
+        {"start": "22:00", "end": "24:00", "type": "base"},
+    ]
+    assert q["4.2"]["total_hours_off"] == 11.0
+    # Unmentioned evening queues (e.g. 6.1, 6.2) must NOT be wiped out even though 6 queues were in the delta!
+    assert q["6.1"]["intervals"] == [{"start": "22:00", "end": "24:00", "type": "base"}]
+    assert q["6.2"]["intervals"] == [{"start": "18:00", "end": "22:00", "type": "base"}]
+
+
+def test_exporter_tail_update_truncates_spanning_interval_when_cancelled(tmp_path):
+    """If an outage 18:00-22:00 is cancelled from 20:00 onwards, preserve 18:00-20:00."""
+    html = """
+    <div class="post">
+        <p>За розпорядженням НЕК «Укренерго» оновлено графік на 23 листопада (оновлено з 20:00).</p>
+        <p>Підчерга 1.1 – без відключень.<br/>Підчерга 1.2 – 20:00-23:00.<br/>
+           Підчерга 2.1 – 20:00-22:00.<br/>Підчерга 2.2 – 20:00-22:00.<br/>
+           Підчерга 3.1 – 20:00-22:00.<br/>Підчерга 3.2 – 20:00-22:00.</p>
+        <hr/>
+        <p>За розпорядженням НЕК «Укренерго» 23.11.2026 р. будуть застосовані графіки (ГПВ).</p>
+        <p>Підчерга 1.1 – 10:00-13:00; 18:00-22:00.<br/>Підчерга 1.2 – 18:00-21:00.<br/>
+           Підчерга 2.1 – 10:00-12:00.<br/>Підчерга 2.2 – 10:00-12:00.<br/>
+           Підчерга 3.1 – 10:00-12:00.<br/>Підчерга 3.2 – 10:00-12:00.</p>
+    </div>
+    """
+    scraper = Scraper()
+    scraper.fetch = MagicMock(return_value=html)
+    scraper.fetch_recent_news_blocks = MagicMock(return_value=[])
+
+    exporter = JsonExporter(output_dir=tmp_path, scraper=scraper, parser=Parser())
+    res = exporter.run()
+    assert res is not None
+
+    q11 = res["schedules"]["2026-11-23"]["queues"]["1.1"]
+    assert q11["intervals"] == [
+        {"start": "10:00", "end": "13:00", "type": "base"},
+        {"start": "18:00", "end": "20:00", "type": "base"},
+    ]
+    assert q11["total_hours_off"] == 5.0
+
+
+def test_exporter_deduplicates_news_vs_main_revisions_and_backfills_per_date_files(tmp_path):
+    """Saved News revision with identical queues to Main page revision should not duplicate, and missing schedules/*.json are backfilled."""
+    q_init = Parser().parse_block({"date": "2026-11-24", "schedule_text": "Підчерга 1.1 – 10:00-12:00.", "extras_text": ""})["queues"]
+    q_2320 = Parser().parse_block({"date": "2026-11-24", "schedule_text": "Підчерга 1.1 – 10:00-12:00; 22:00-24:00.", "extras_text": ""})["queues"]
+    fmt_init = JsonExporter._format_queues(q_init)
+    fmt_2320 = JsonExporter._format_queues(q_2320)
+
+    existing_outages = {
+        "source": Scraper.URL,
+        "last_updated": "2026-11-23T23:30:00+02:00",
+        "available_dates": ["2026-11-24", "2026-11-22"],
+        "schedules": {
+            "2026-11-24": {
+                "date": "2026-11-24",
+                "operational_message": "Оновлено на 24 листопада (оновлено 23:20).",
+                "queues": fmt_2320,
+                "previous_schedules": [
+                    {"operational_message": "Графік 24.11.2026.", "queues": fmt_init}
+                ],
+            },
+            "2026-11-22": {
+                "date": "2026-11-22",
+                "operational_message": "Графік 22.11.2026.",
+                "queues": fmt_init,
+                "previous_schedules": [
+                    # Stale duplicate matching active queues on historical date
+                    {"operational_message": "Графік 22.11.2026 (дубль).", "queues": fmt_init}
+                ],
+            },
+        },
+    }
+    (tmp_path / "outages.json").write_text(json.dumps(existing_outages), encoding="utf-8")
+
+    main_html = """
+    <div class="post">
+        <p>Оновлено на 24 листопада (оновлено з 20:00).</p>
+        <p>Додаткові години відсутності електроенергії:</p>
+        <p>Підчерга 2.1 – 20:00-22:00.</p>
+        <hr/>
+        <p>Оновлено на 24 листопада (оновлено 23:20, 23.11.2026).</p>
+        <p>Підчерга 1.1 – 10:00-12:00; 22:00-24:00.</p>
+        <hr/>
+        <p>Графік 24.11.2026.</p>
+        <p>Підчерга 1.1 – 10:00-12:00.</p>
+    </div>
+    """
+    scraper = Scraper()
+    scraper.fetch = MagicMock(return_value=main_html)
+    scraper.fetch_recent_news_blocks = MagicMock(return_value=[])
+
+    exporter = JsonExporter(output_dir=tmp_path, scraper=scraper, parser=Parser())
+    res = exporter.run()
+    assert res is not None
+
+    # 2026-11-24 has only 2 previous schedules (23:20 from main page and initial), NOT a 3rd duplicate from News
+    prev_24 = res["schedules"]["2026-11-24"]["previous_schedules"]
+    assert len(prev_24) == 2
+    assert "23:20, 23.11.2026" in prev_24[0]["operational_message"]
+    assert prev_24[1]["operational_message"] == "Графік 24.11.2026."
+
+    # Historical 2026-11-22 had its stale active-matching duplicate removed AND its missing schedules/2026-11-22.json backfilled
+    assert res["schedules"]["2026-11-22"]["previous_schedules"] == []
+    assert (tmp_path / "schedules" / "2026-11-22.json").exists()
+    assert (tmp_path / "schedules" / "2026-11-24.json").exists()
+
+
 

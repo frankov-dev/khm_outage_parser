@@ -36,6 +36,9 @@ jobs:
       - name: Run tests
         run: pytest -v
 
+      - name: Sync latest branch state before scraping
+        run: git pull --ff-only origin "${GITHUB_REF_NAME}" || true
+
       - name: Scrape and generate JSON
         run: python run.py --output-dir docs --allow-empty
 
@@ -46,7 +49,15 @@ jobs:
           git add docs/outages.json docs/latest.json docs/today.json docs/tomorrow.json docs/status.json docs/schedules/
           if ! git diff --staged --quiet; then
             git commit -m "chore: update outage schedules JSON [skip ci]"
-            git push
+            if ! git pull --rebase origin "${GITHUB_REF_NAME}"; then
+              git rebase --abort || true
+              git fetch origin "${GITHUB_REF_NAME}"
+              git reset --hard "origin/${GITHUB_REF_NAME}"
+              python run.py --output-dir docs --allow-empty
+              git add docs/outages.json docs/latest.json docs/today.json docs/tomorrow.json docs/status.json docs/schedules/
+              git diff --staged --quiet || git commit -m "chore: update outage schedules JSON [skip ci]"
+            fi
+            git push origin "HEAD:${GITHUB_REF_NAME}"
           else
             echo "No changes in JSON files."
           fi

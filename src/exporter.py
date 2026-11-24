@@ -9,6 +9,7 @@ ready to be served via GitHub Pages or raw GitHub URLs.
 import hashlib
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -26,6 +27,8 @@ def calculate_total_hours(intervals: list[dict[str, str]]) -> float:
         try:
             sh, sm = map(int, interval["start"].split(":"))
             eh, em = map(int, interval["end"].split(":"))
+            if eh == 0 and em == 0 and (sh > 0 or sm > 0):
+                eh = 24
             diff = (eh * 60 + em) - (sh * 60 + sm)
             if diff > 0:
                 total_minutes += diff
@@ -158,17 +161,32 @@ class JsonExporter:
                 merged = {}
                 for q in ALL_SUBQUEUES:
                     new_ints = [i.copy() for i in ver_raw.get(q, [])]
-                    past_ints = [
-                        i.copy()
-                        for i in base_raw.get(q, [])
-                        if self.parser.to_minutes(i["end"]) <= cutoff_mins
-                        and not any(self.parser.overlaps(i, n) for n in new_ints)
-                    ]
+                    past_ints: list[dict[str, str]] = []
+                    for i in base_raw.get(q, []):
+                        if any(self.parser.overlaps(i, n) for n in new_ints):
+                            continue
+                        i_start = self.parser.to_minutes(i["start"])
+                        i_end = self.parser.to_minutes(i["end"])
+                        if i_end <= cutoff_mins:
+                            past_ints.append(i.copy())
+                        elif i_start < cutoff_mins < i_end:
+                            truncated = i.copy()
+                            truncated["end"] = effective_from
+                            past_ints.append(truncated)
                     merged[q] = self.parser.merge_intervals_list(past_ints + new_ints)
                 return merged
 
         # 3. Full-day replacement
         return {q: [i.copy() for i in ver_raw.get(q, [])] for q in ALL_SUBQUEUES}
+
+    @staticmethod
+    def _normalize_message_key(msg: Optional[str]) -> Optional[str]:
+        """Normalize the headline of an operational message for matching across minor edits."""
+        if not msg:
+            return None
+        first_line = msg.splitlines()[0]
+        cleaned = re.sub(r"\s+", " ", first_line.replace("\xa0", " ")).strip().lower()
+        return cleaned.rstrip(".:;")
 
     @staticmethod
     def _build_revision_entry(schedule_obj: dict[str, Any]) -> dict[str, Any]:
@@ -186,11 +204,13 @@ class JsonExporter:
 
     @staticmethod
     def _write_json(path: Path, data: dict[str, Any]) -> None:
-        """Write JSON payload atomically with consistent formatting."""
+        """Write JSON payload atomically via a temporary sibling file."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
             f.write("\n")
+        tmp_path.replace(path)
 
     def run(self) -> Optional[dict[str, Any]]:
         """
@@ -286,7 +306,9 @@ class JsonExporter:
                 and isinstance(old_saved, dict)
                 and isinstance(old_saved.get("queues"), dict)
             ):
-                if old_saved.get("operational_message") == first_ver.get("operational_message"):
+                if self._normalize_message_key(old_saved.get("operational_message")) == self._normalize_message_key(
+                    first_ver.get("operational_message")
+                ):
                     # Already applied in a previous run; avoid double-applying
                     base_raw = self._extract_raw_queues(old_saved["queues"])
                     chronological = chronological[1:]
@@ -326,56 +348,56 @@ class JsonExporter:
             previous_revisions: list[dict[str, Any]] = []
             seen_revisions: list[dict[str, Any]] = []
 
-            def _add_revision(rev: dict[str, Any]) -> None:
-                # Skip if identical to the newest active schedule or already in the list
-                if (
-                    rev.get("queues") == newest["queues"]
-                    and rev.get("operational_message") == newest["operational_message"]
-                ):
+            def _add_revision(rev: dict[str, Any], *, dedupe_by_queues: bool = False) -> None:
+                # Never keep a "previous" revision whose queues are identical to the active schedule
+                if rev.get("queues") == newest["queues"]:
+                    return
+                if dedupe_by_queues and any(r.get("queues") == rev.get("queues") for r in seen_revisions):
                     return
                 if any(
                     r.get("queues") == rev.get("queues")
-                    and r.get("operational_message") == rev.get("operational_message")
+                    and self._normalize_message_key(r.get("operational_message"))
+                    == self._normalize_message_key(rev.get("operational_message"))
                     for r in seen_revisions
                 ):
                     return
                 seen_revisions.append(rev)
                 previous_revisions.append(rev)
 
-            # 1. Revisions explicitly present on the page below the newest schedule
+            # 1. Revisions explicitly present on the current page below the newest schedule
             for rev in older_on_page:
                 _add_revision(rev)
 
             # 2. If there was an existing schedule saved for this date in outages.json,
             # preserve it and its previous_schedules ONLY for announcements that are no longer
-            # present on the current page (prevents keeping stale/corrupted duplicates when
-            # the same operational_message was freshly recomputed from the page).
-            recomputed_messages = {
-                snap.get("operational_message")
+            # present on the current page and whose queues are not already represented
+            # (prevents keeping stale/corrupted duplicates or News-vs-Main wording variants).
+            recomputed_message_keys = {
+                self._normalize_message_key(snap.get("operational_message"))
                 for snap in effective_snapshots
                 if snap.get("operational_message")
             }
             if isinstance(old_saved, dict):
-                old_msg = old_saved.get("operational_message")
+                old_msg_key = self._normalize_message_key(old_saved.get("operational_message"))
                 if "queues" in old_saved and (
-                    not recomputed_messages or old_msg not in recomputed_messages
+                    not recomputed_message_keys or old_msg_key not in recomputed_message_keys
                 ):
-                    _add_revision(self._build_revision_entry(old_saved))
+                    _add_revision(self._build_revision_entry(old_saved), dedupe_by_queues=True)
                 elif (
                     "queues" in old_saved
                     and not older_on_page
                     and old_saved.get("queues") != newest["queues"]
                 ):
                     # Same single-block page edited in place without changing header text
-                    _add_revision(self._build_revision_entry(old_saved))
+                    _add_revision(self._build_revision_entry(old_saved), dedupe_by_queues=True)
 
                 for old_rev in old_saved.get("previous_schedules", []):
                     if not (isinstance(old_rev, dict) and "queues" in old_rev):
                         continue
-                    rev_msg = old_rev.get("operational_message")
-                    if recomputed_messages and rev_msg in recomputed_messages:
+                    rev_msg_key = self._normalize_message_key(old_rev.get("operational_message"))
+                    if recomputed_message_keys and rev_msg_key in recomputed_message_keys:
                         continue
-                    _add_revision(self._build_revision_entry(old_rev))
+                    _add_revision(self._build_revision_entry(old_rev), dedupe_by_queues=True)
 
             schedule_entry: dict[str, Any] = {
                 "date": date_str,
@@ -391,10 +413,28 @@ class JsonExporter:
                 f"{len(previous_revisions)} previous revision(s))"
             )
 
-        # Ensure all historical entries also have `previous_schedules` normalized
-        for d, sched in schedules.items():
-            if isinstance(sched, dict) and "previous_schedules" not in sched:
-                sched["previous_schedules"] = []
+        # Ensure all historical entries have clean, deduplicated `previous_schedules`
+        cleaned_historical_dates: set[str] = set()
+        for d, sched in list(schedules.items()):
+            if not isinstance(sched, dict):
+                continue
+            if "previous_schedules" not in sched or not isinstance(sched.get("previous_schedules"), list):
+                schedules[d] = {**sched, "previous_schedules": []}
+                cleaned_historical_dates.add(d)
+            elif d not in updated_dates:
+                active_q = sched.get("queues")
+                clean_prev: list[dict[str, Any]] = []
+                for rev in sched["previous_schedules"]:
+                    if not (isinstance(rev, dict) and "queues" in rev):
+                        continue
+                    if rev.get("queues") == active_q:
+                        continue
+                    if any(r.get("queues") == rev.get("queues") for r in clean_prev):
+                        continue
+                    clean_prev.append(rev)
+                if clean_prev != sched["previous_schedules"]:
+                    schedules[d] = {**sched, "previous_schedules": clean_prev}
+                    cleaned_historical_dates.add(d)
 
         # Keep only the most recent `max_days_history` dates, sorted descending
         sorted_dates = sorted(schedules.keys(), reverse=True)[: self.max_days_history]
@@ -404,15 +444,18 @@ class JsonExporter:
         today_path = self.output_dir / "today.json"
         tomorrow_path = self.output_dir / "tomorrow.json"
         status_path = self.output_dir / "status.json"
+        schedules_dir = self.output_dir / "schedules"
 
-        # Check if midnight rollover happened (so today.json / status.json need refreshing)
+        # Check if midnight rollover happened or any per-date schedule file is missing
         expected_today_date = today_str if today_str in trimmed_schedules else sorted_dates[0]
         existing_today = self._load_json_file("today.json")
         existing_status = self._load_json_file("status.json")
+        per_date_files_exist = all((schedules_dir / f"{d}.json").exists() for d in sorted_dates)
         day_files_up_to_date = (
             today_path.exists()
             and tomorrow_path.exists()
             and status_path.exists()
+            and per_date_files_exist
             and existing_today is not None
             and existing_today.get("date") == expected_today_date
             and existing_status is not None
@@ -514,9 +557,10 @@ class JsonExporter:
         self._write_json(status_path, status_payload)
 
         # 6. Write per-date archive files in docs/schedules/<YYYY-MM-DD>.json
-        schedules_dir = self.output_dir / "schedules"
-        for d in updated_dates:
-            if d in trimmed_schedules:
+        dates_to_write = set(updated_dates) | cleaned_historical_dates
+        for d in sorted_dates:
+            day_file = schedules_dir / f"{d}.json"
+            if d in dates_to_write or not day_file.exists():
                 day_sched = trimmed_schedules[d]
                 day_payload = {
                     "source": self.scraper.URL,
@@ -526,7 +570,7 @@ class JsonExporter:
                     "queues": day_sched["queues"],
                     "previous_schedules": day_sched.get("previous_schedules", []),
                 }
-                self._write_json(schedules_dir / f"{d}.json", day_payload)
+                self._write_json(day_file, day_payload)
 
         logger.info(
             f"Exported {len(sorted_dates)} date(s) to {outages_path}, {latest_path}, {today_path}, {tomorrow_path}, and {status_path}"

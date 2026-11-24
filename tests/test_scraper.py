@@ -123,13 +123,30 @@ class TestScraperBlockExtraction:
             <p>Для промислових споживачів діятиме графік обмеження споживання електричної потужності.</p>
             <p>Наголошуємо, що головною причиною запровадження графіків обмеження та відключення електропостачання є ракетно-дронові обстріли з боку ворога.</p>
             <p>Зверніть увагу, це прогноз відключень.</p>
+            <p>Перевірити свою чергу ГПВ можна на наших ресурсах:</p>
         </div>
         """
         blocks = scraper.extract_blocks(html)
         assert len(blocks) == 1
         assert "Наголошуємо" not in blocks[0]["extras_text"]
         assert "Для промислових" not in blocks[0]["extras_text"]
+        assert "Перевірити свою чергу" not in blocks[0]["extras_text"]
         assert "За розпорядженням" in blocks[0]["extras_text"]
+
+    def test_keeps_plural_additive_header_and_collapses_nbsp_spaces(self, scraper):
+        html = """
+        <div class="post">
+            <p>За розпорядженням НЕК «Укренерго» оновлено графік погодинних відключень (ГПВ) на 24 листопада (оновлено з\xa0 20:00).</p>
+            <p>Додаткові\xa0години відсутності електроенергії:</p>
+            <p>Підчерга 2.1 - 20:00-22:00.</p>
+            <p>Підчерга 4.2\xa0- 22:00-00:00.</p>
+        </div>
+        """
+        blocks = scraper.extract_blocks(html)
+        assert len(blocks) == 1
+        assert "(оновлено з 20:00)" in blocks[0]["extras_text"]
+        assert "Додаткові години відсутності електроенергії:" in blocks[0]["extras_text"]
+        assert "Підчерга 4.2 - 22:00-00:00." in blocks[0]["schedule_text"]
 
     def test_find_news_schedule_links_skips_faq_and_articles(self, scraper):
         news_html = """

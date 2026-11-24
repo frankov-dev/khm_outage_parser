@@ -22,7 +22,7 @@ khm_outage_parser/
 │   ├── outages.json            # Повна база за останні 14 днів (сумісний зі старим API)
 │   └── schedules/
 │       └── YYYY-MM-DD.json     # Окремий файл графіка для кожної дати
-├── tests/                      # Юніт-тести (39 тестів)
+├── tests/                      # Юніт-тести (50+ тестів)
 ├── run.py                      # Точка входу (CLI)
 └── requirements.txt
 ```
@@ -82,8 +82,10 @@ khm_outage_parser/
 
 Базовий URL:
 ```text
-https://raw.githubusercontent.com/<username>/<repo-name>/main/docs/
+https://raw.githubusercontent.com/frankov-dev/khm_outage_parser/master/docs/
 ```
+
+> **Порада щодо частоти оновлень у GitHub Actions:** GitHub може затримувати вбудовані `schedule` cron-запуски на публічних репозиторіях у години пікового навантаження. Для гарантованого 15-хвилинного інтервалу можна безкоштовно викликати `workflow_dispatch` через зовнішній планувальник (наприклад, Cloudflare Workers Cron або cron-job.org).
 
 #### Крок 1. Фонова перевірка оновлень (`GET /docs/status.json`)
 Раз на 15 хвилин у фоновому `WorkManager` або при старті додатка стягуйте `status.json`:

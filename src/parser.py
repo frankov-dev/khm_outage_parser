@@ -56,7 +56,7 @@ class Parser:
     )
 
     EFFECTIVE_FROM_PATTERN = re.compile(
-        r'\((?:[^)]*?(?:оновлено|з|о[б]?)\s*)?(\d{1,2}:\d{2})[^)]*\)',
+        r'\([^)]*?\b(?:з|із|зі)\s*(\d{1,2}:\d{2})\b(?!\s*(?:до|[-–—]))[^)]*\)',
         re.IGNORECASE
     )
 
@@ -102,14 +102,15 @@ class Parser:
                 if not queue_matches:
                     continue
 
-                intervals = [
-                    {
-                        "start": self._normalize_time(s),
-                        "end": self._normalize_time(e),
-                        "type": "base"
-                    }
-                    for s, e in self.TIME_PATTERN.findall(line)
-                ]
+                intervals = []
+                for s, e in self.TIME_PATTERN.findall(line):
+                    norm_s = self._normalize_time(s)
+                    norm_e = self._normalize_end_time(e, norm_s)
+                    intervals.append({
+                        "start": norm_s,
+                        "end": norm_e,
+                        "type": "base",
+                    })
 
                 if intervals:
                     for queue in queue_matches:
@@ -124,8 +125,10 @@ class Parser:
         # Parse and apply operational changes
         extras_text = block.get("extras_text", "")
         if extras_text:
-            self._apply_changes(extras_text, queues)
+            self._apply_changes(extras_text, queues, explicit_no_outage_queues)
             for q in queues:
+                _record_mentioned(q)
+            for q in explicit_no_outage_queues:
                 _record_mentioned(q)
 
         merged_queues = self._merge_intervals(queues)
@@ -168,27 +171,61 @@ class Parser:
         h, m = parts[0].zfill(2), parts[1].zfill(2)
         return f"{h}:{m}"
 
-    def _apply_changes(self, extras_text: str, queues: dict[str, list[dict[str, Any]]]) -> None:
+    def _normalize_end_time(self, end_str: str, start_str: Optional[str] = None) -> str:
+        """Normalize interval end time, treating '00:00' as end-of-day '24:00'."""
+        norm_end = self._normalize_time(end_str)
+        if norm_end == "00:00":
+            norm_start = self._normalize_time(start_str) if start_str else None
+            if norm_start != "00:00":
+                return "24:00"
+        return norm_end
+
+    def _apply_changes(
+        self,
+        extras_text: str,
+        queues: dict[str, list[dict[str, Any]]],
+        explicit_no_outage_queues: Optional[set[str]] = None,
+    ) -> None:
         """Apply operational changes to queue schedules."""
         # Normalize dashes and separators
         text = extras_text.replace("–", "-").replace("—", "-")
 
-        # Split into separate entries (bullet points, sentences, semicolons)
+        # Split into separate entries (newlines, bullet semicolons, or sentences starting a new subqueue clause)
         entries = re.split(
-            r'[;\n]+|(?:\.\s+(?=у\s+підчерг|підчерг[иуа]|підчерзі))',
+            r'\n+|;\s*(?=[-•]|\s*(?:у\s+)?підчерг|\s*додатков)|(?:\.\s+(?=у\s+підчерг|підчерг[иуа]|підчерзі))',
             text,
             flags=re.IGNORECASE,
         )
         processed: set[str] = set()
 
         for entry in entries:
-            entry = entry.strip()
+            entry = entry.strip().rstrip(";")
             if not entry:
                 continue
 
             # Extract queue numbers (e.g. "у підчерг 3.2, 4.1" or "підчерга 2.1.")
             queue_nums = re.findall(r'\b([1-6]\.[1-2])\b', entry)
             if not queue_nums:
+                continue
+
+            # Pattern 0: Cancellation / explicit no-outage in operational notes ("скасовано", "без відключень")
+            if self.NO_OUTAGE_PATTERN.search(entry):
+                cancelled_ranges = self.TIME_PATTERN.findall(entry)
+                if cancelled_ranges:
+                    for s_raw, e_raw in cancelled_ranges:
+                        start = self._normalize_time(s_raw)
+                        end = self._normalize_end_time(e_raw, start)
+                        for q in queue_nums:
+                            key = f"{q}_cancel_{start}_{end}"
+                            if key not in processed:
+                                queues.setdefault(q, []).append({"start": start, "end": end, "type": "cancel"})
+                                processed.add(key)
+                else:
+                    for q in queue_nums:
+                        queues.setdefault(q, [])
+                        queues[q].append({"start": None, "end": None, "type": "cancel_all"})
+                        if explicit_no_outage_queues is not None:
+                            explicit_no_outage_queues.add(q)
                 continue
 
             # Pattern 1: Full change / explicit interval
@@ -201,9 +238,11 @@ class Parser:
             if match:
                 groups = match.groups()
                 if groups[0] and groups[1]:
-                    start, end = self._normalize_time(groups[0]), self._normalize_time(groups[1])
+                    start = self._normalize_time(groups[0])
+                    end = self._normalize_end_time(groups[1], start)
                 else:
-                    start, end = self._normalize_time(groups[2]), self._normalize_time(groups[3])
+                    start = self._normalize_time(groups[2])
+                    end = self._normalize_end_time(groups[3], start)
 
                 for q in queue_nums:
                     if f"{q}_full_{start}_{end}" not in processed:
@@ -235,7 +274,7 @@ class Parser:
             )
             if match:
                 raw_time = match.group(1) or match.group(2)
-                new_end = self._normalize_time(raw_time)
+                new_end = self._normalize_end_time(raw_time)
                 for q in queue_nums:
                     key = f"{q}_end_{new_end}"
                     if key not in processed:
@@ -243,16 +282,17 @@ class Parser:
                         processed.add(key)
                 continue
 
-            # Pattern 4: Extra outage "додатково буде знеструмлено з 16:00 до 18:00"
-            match = re.search(
-                r'додатково.+?з\s*(\d{1,2}:\d{2})\s*(?:до|-)\s*(\d{1,2}:\d{2})',
-                entry,
-                re.IGNORECASE
-            )
-            if match:
-                start, end = self._normalize_time(match.group(1)), self._normalize_time(match.group(2))
-                for q in queue_nums:
-                    queues.setdefault(q, []).append({"start": start, "end": end, "type": "extra"})
+            # Pattern 4: Extra outage ("додатково буде знеструмлено з 16:00 до 18:00" or "Підчерга 1.1 - додатково 20:00-22:00")
+            if re.search(r'\bдодатков[оіа]?\b', entry, re.IGNORECASE):
+                extra_ranges = self.TIME_PATTERN.findall(entry)
+                for s_raw, e_raw in extra_ranges:
+                    start = self._normalize_time(s_raw)
+                    end = self._normalize_end_time(e_raw, start)
+                    for q in queue_nums:
+                        key = f"{q}_extra_{start}_{end}"
+                        if key not in processed:
+                            queues.setdefault(q, []).append({"start": start, "end": end, "type": "extra"})
+                            processed.add(key)
 
     def _merge_intervals(self, queues: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, str]]]:
         """
@@ -264,10 +304,14 @@ class Parser:
         result: dict[str, list[dict[str, str]]] = {}
 
         for queue, intervals in queues.items():
+            if any(i["type"] == "cancel_all" for i in intervals):
+                continue
+
             base = [i.copy() for i in intervals if i["type"] == "base" and i["start"] and i["end"]]
             changes = [i for i in intervals if i["type"] in ("change_start", "change_end")]
             full_changes = [i for i in intervals if i["type"] == "change" and i["start"] and i["end"]]
             extras = [i for i in intervals if i["type"] == "extra" and i["start"] and i["end"]]
+            cancels = [i for i in intervals if i["type"] == "cancel" and i["start"] and i["end"]]
 
             base.sort(key=lambda x: self._to_minutes(x["start"]))
 
@@ -302,6 +346,23 @@ class Parser:
 
             # Add extras
             base.extend({"start": e["start"], "end": e["end"], "type": "base"} for e in extras)
+
+            # Subtract any explicitly cancelled time ranges
+            for c in cancels:
+                c_s, c_e = self._to_minutes(c["start"]), self._to_minutes(c["end"])
+                if c_s >= c_e:
+                    continue
+                updated_base: list[dict[str, Any]] = []
+                for bi in base:
+                    b_s, b_e = self._to_minutes(bi["start"]), self._to_minutes(bi["end"])
+                    if b_e <= c_s or b_s >= c_e:
+                        updated_base.append(bi)
+                    else:
+                        if b_s < c_s:
+                            updated_base.append({"start": bi["start"], "end": c["start"], "type": "base"})
+                        if c_e < b_e:
+                            updated_base.append({"start": c["end"], "end": bi["end"], "type": "base"})
+                base = updated_base
 
             # Filter out any invalid intervals where start >= end
             valid_base = [
@@ -368,11 +429,12 @@ class Parser:
 
     def merge_intervals_list(self, intervals: list[dict[str, str]]) -> list[dict[str, str]]:
         """Public wrapper for merging overlapping/contiguous intervals and sorting chronologically."""
-        valid = [
-            {"start": i["start"], "end": i["end"], "type": i.get("type", "base")}
-            for i in intervals
-            if self._to_minutes(i["start"]) < self._to_minutes(i["end"])
-        ]
+        valid = []
+        for i in intervals:
+            norm_s = self._normalize_time(i["start"])
+            norm_e = self._normalize_end_time(i["end"], norm_s)
+            if self._to_minutes(norm_s) < self._to_minutes(norm_e):
+                valid.append({"start": norm_s, "end": norm_e, "type": i.get("type", "base")})
         return self._merge_overlapping(valid)
 
     def _to_minutes(self, time_str: str) -> int:

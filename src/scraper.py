@@ -96,7 +96,7 @@ class Scraper:
         "триватим",
         "скасовано",
         "заживлення",
-        "додатково",
+        "додатков",
         "розпочнеться",
         "почнеться",
         "починається",
@@ -258,8 +258,11 @@ class Scraper:
 
     def _is_boilerplate_line(self, line: str) -> bool:
         """Check if a line is standard informational boilerplate rather than an operational message."""
-        lower = line.lower().replace("\xa0", " ").strip()
-        if "перевірити чергу" in lower or "графік обмеження споживання електричної потужності" in lower:
+        lower = re.sub(r"[ \t]+", " ", line.lower().replace("\xa0", " ")).strip()
+        if (
+            re.search(r"перевірити\s+(?:свою\s+)?чергу", lower)
+            or "графік обмеження споживання електричної потужності" in lower
+        ):
             return True
         return any(lower.startswith(prefix) for prefix in self.BOILERPLATE_PREFIXES)
 
@@ -360,11 +363,12 @@ class Scraper:
             extras_lines: list[str] = []
             keywords = [
                 "підчерг", "підчерзі", "відключен", "знеструм", "раніше", "пізніше", "довше",
-                "додатково", "укренерго", "розпоряджен", "триватим", "заживлення", "скасовано", "графік", "гпв"
+                "додатков", "збільшено", "зменшено", "оновлен", "укренерго", "розпоряджен", "триватим",
+                "заживлення", "скасовано", "графік", "гпв"
             ]
 
             for raw_line in sec_text.split("\n"):
-                line = raw_line.strip()
+                line = re.sub(r"[ \t]+", " ", raw_line).strip()
                 if not line:
                     continue
 

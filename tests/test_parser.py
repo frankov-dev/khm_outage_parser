@@ -216,3 +216,69 @@ class TestParserEdgeCases:
         assert res["queues"]["5.2"] == [{"start": "22:00", "end": "24:00", "type": "base"}]
         assert res["queues"]["6.2"] == [{"start": "22:00", "end": "24:00", "type": "base"}]
 
+    def test_midnight_00_00_end_normalized_to_24_00(self, parser):
+        block = {
+            "date": "2026-11-24",
+            "schedule_text": (
+                "Підчерга 2.2 – 00:00-01:00.\n"
+                "Підчерга 4.2 – 22:00-00:00.\n"
+                "Підчерга 5.1 – 18:00-21:00."
+            ),
+            "extras_text": (
+                "- у підчерги 5.1 відключення триватиме довше – до 00:00\n"
+                "- Підчерга 6.1 – додатково 21:00-00:00"
+            ),
+        }
+        res = parser.parse_block(block)
+        assert res["queues"]["2.2"] == [{"start": "00:00", "end": "01:00", "type": "base"}]
+        assert res["queues"]["4.2"] == [{"start": "22:00", "end": "24:00", "type": "base"}]
+        assert res["queues"]["5.1"] == [{"start": "18:00", "end": "24:00", "type": "base"}]
+        assert res["queues"]["6.1"] == [{"start": "21:00", "end": "24:00", "type": "base"}]
+
+    def test_cancellation_in_operational_changes(self, parser):
+        block = {
+            "date": "2026-11-24",
+            "schedule_text": (
+                "Підчерга 1.1 – 10:00-14:00; 18:00-22:00.\n"
+                "Підчерга 2.1 – 12:00-16:00."
+            ),
+            "extras_text": (
+                "- у підчерги 1.1 відключення з 18:00 до 20:00 скасовано;\n"
+                "- у підчерги 2.1 відключення скасовано."
+            ),
+        }
+        res = parser.parse_block(block)
+        assert res["queues"]["1.1"] == [
+            {"start": "10:00", "end": "14:00", "type": "base"},
+            {"start": "20:00", "end": "22:00", "type": "base"},
+        ]
+        assert res["queues"]["2.1"] == []
+        assert "2.1" in res["mentioned_queues"]
+
+    def test_effective_from_requires_preposition_z(self, parser):
+        # Publication timestamps without 'з' must NOT be treated as effective_from
+        for pub_note in (
+            "оновлено графік на 24 листопада (оновлено 23:20, 23.11.2026).",
+            "оновлено графік на 16 листопада (оновлено о 23:00, 15.11.2026).",
+            "оновлено графік на 21 листопада (оновлено 23:00).",
+        ):
+            res = parser.parse_block({
+                "date": "2026-11-24",
+                "schedule_text": "Підчерга 1.1 – 10:00-14:00.",
+                "extras_text": pub_note,
+            })
+            assert res["effective_from"] is None
+
+        # Genuine effective-from notes with 'з' MUST be detected
+        for eff_note, expected in (
+            ("оновлено графік на 24 листопада (оновлено з 20:00).", "20:00"),
+            ("оновлено графік на 15 листопада (з 17:30).", "17:30"),
+            ("Прогноз ГПВ (ОНОВЛЕНО, з 9:30).", "09:30"),
+        ):
+            res = parser.parse_block({
+                "date": "2026-11-24",
+                "schedule_text": "Підчерга 1.1 – 10:00-14:00.",
+                "extras_text": eff_note,
+            })
+            assert res["effective_from"] == expected
+
