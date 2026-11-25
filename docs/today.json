@@ -1,81 +1,46 @@
 {
   "source": "https://hoe.com.ua/page/pogodinni-vidkljuchennja",
-  "last_updated": "2026-11-25T22:20:46.237797+02:00",
-  "schedule_hash": "885c1e7d65858606",
-  "date": "2026-11-25",
+  "last_updated": "2026-11-26T00:21:56.011928+02:00",
+  "schedule_hash": "acf753145382b5fe",
+  "date": "2026-11-26",
   "is_today": true,
-  "operational_message": "За розпорядженням НЕК «Укренерго» оновлено графік погодинних відключень (ГПВ) на 25 листопада (оновлено з 21:35).\nДодаткові години відсутності електроенергії:",
+  "operational_message": "За розпорядженням НЕК «Укренерго» оновлено графік погодинних відключень (ГПВ) на 26.11.2026 р. (оновлено 23:40).",
   "queues": {
     "1.1": {
       "intervals": [
         {
+          "start": "00:00",
+          "end": "02:00",
+          "type": "base"
+        },
+        {
           "start": "06:00",
           "end": "09:00",
           "type": "base"
         },
         {
-          "start": "16:00",
-          "end": "20:00",
+          "start": "12:00",
+          "end": "16:00",
           "type": "base"
         },
         {
-          "start": "22:00",
-          "end": "24:00",
+          "start": "19:00",
+          "end": "22:00",
           "type": "base"
         }
       ],
-      "total_hours_off": 9.0
+      "total_hours_off": 12.0
     },
     "1.2": {
       "intervals": [
         {
-          "start": "06:00",
-          "end": "09:00",
-          "type": "base"
-        },
-        {
-          "start": "16:00",
-          "end": "20:00",
-          "type": "base"
-        }
-      ],
-      "total_hours_off": 7.0
-    },
-    "2.1": {
-      "intervals": [
-        {
-          "start": "03:00",
+          "start": "02:00",
           "end": "06:00",
           "type": "base"
         },
         {
-          "start": "09:00",
-          "end": "12:00",
-          "type": "base"
-        },
-        {
-          "start": "16:00",
-          "end": "19:00",
-          "type": "base"
-        }
-      ],
-      "total_hours_off": 9.0
-    },
-    "2.2": {
-      "intervals": [
-        {
-          "start": "00:00",
-          "end": "03:00",
-          "type": "base"
-        },
-        {
-          "start": "09:00",
-          "end": "12:00",
-          "type": "base"
-        },
-        {
-          "start": "16:00",
-          "end": "19:00",
+          "start": "12:00",
+          "end": "17:00",
           "type": "base"
         },
         {
@@ -86,106 +51,56 @@
       ],
       "total_hours_off": 11.0
     },
+    "2.1": {
+      "intervals": [
+        {
+          "start": "02:00",
+          "end": "06:00",
+          "type": "base"
+        },
+        {
+          "start": "15:00",
+          "end": "19:00",
+          "type": "base"
+        },
+        {
+          "start": "22:00",
+          "end": "24:00",
+          "type": "base"
+        }
+      ],
+      "total_hours_off": 10.0
+    },
+    "2.2": {
+      "intervals": [
+        {
+          "start": "06:00",
+          "end": "09:00",
+          "type": "base"
+        },
+        {
+          "start": "12:00",
+          "end": "15:00",
+          "type": "base"
+        },
+        {
+          "start": "19:00",
+          "end": "22:00",
+          "type": "base"
+        }
+      ],
+      "total_hours_off": 9.0
+    },
     "3.1": {
       "intervals": [
         {
-          "start": "03:00",
-          "end": "06:00",
-          "type": "base"
-        },
-        {
-          "start": "12:00",
-          "end": "16:00",
-          "type": "base"
-        },
-        {
-          "start": "19:00",
-          "end": "22:00",
-          "type": "base"
-        }
-      ],
-      "total_hours_off": 10.0
-    },
-    "3.2": {
-      "intervals": [
-        {
-          "start": "08:00",
+          "start": "09:00",
           "end": "12:00",
           "type": "base"
         },
         {
-          "start": "16:00",
+          "start": "15:00",
           "end": "19:00",
-          "type": "base"
-        }
-      ],
-      "total_hours_off": 7.0
-    },
-    "4.1": {
-      "intervals": [
-        {
-          "start": "12:00",
-          "end": "16:00",
-          "type": "base"
-        },
-        {
-          "start": "19:00",
-          "end": "22:00",
-          "type": "base"
-        }
-      ],
-      "total_hours_off": 7.0
-    },
-    "4.2": {
-      "intervals": [
-        {
-          "start": "00:00",
-          "end": "03:00",
-          "type": "base"
-        },
-        {
-          "start": "08:00",
-          "end": "12:00",
-          "type": "base"
-        },
-        {
-          "start": "16:00",
-          "end": "19:00",
-          "type": "base"
-        }
-      ],
-      "total_hours_off": 10.0
-    },
-    "5.1": {
-      "intervals": [
-        {
-          "start": "03:00",
-          "end": "06:00",
-          "type": "base"
-        },
-        {
-          "start": "12:00",
-          "end": "16:00",
-          "type": "base"
-        },
-        {
-          "start": "19:00",
-          "end": "22:00",
-          "type": "base"
-        }
-      ],
-      "total_hours_off": 10.0
-    },
-    "5.2": {
-      "intervals": [
-        {
-          "start": "00:00",
-          "end": "03:00",
-          "type": "base"
-        },
-        {
-          "start": "12:00",
-          "end": "16:00",
           "type": "base"
         },
         {
@@ -196,45 +111,130 @@
       ],
       "total_hours_off": 9.0
     },
-    "6.1": {
+    "3.2": {
       "intervals": [
         {
-          "start": "12:00",
+          "start": "06:00",
+          "end": "09:00",
+          "type": "base"
+        },
+        {
+          "start": "13:00",
           "end": "16:00",
           "type": "base"
         },
         {
-          "start": "19:00",
+          "start": "20:00",
           "end": "22:00",
+          "type": "base"
+        }
+      ],
+      "total_hours_off": 8.0
+    },
+    "4.1": {
+      "intervals": [
+        {
+          "start": "06:00",
+          "end": "09:00",
+          "type": "base"
+        },
+        {
+          "start": "13:00",
+          "end": "16:00",
+          "type": "base"
+        },
+        {
+          "start": "20:00",
+          "end": "22:00",
+          "type": "base"
+        }
+      ],
+      "total_hours_off": 8.0
+    },
+    "4.2": {
+      "intervals": [
+        {
+          "start": "13:00",
+          "end": "15:00",
+          "type": "base"
+        },
+        {
+          "start": "17:00",
+          "end": "20:00",
+          "type": "base"
+        }
+      ],
+      "total_hours_off": 5.0
+    },
+    "5.1": {
+      "intervals": [
+        {
+          "start": "08:00",
+          "end": "12:00",
+          "type": "base"
+        },
+        {
+          "start": "16:00",
+          "end": "20:00",
+          "type": "base"
+        }
+      ],
+      "total_hours_off": 8.0
+    },
+    "5.2": {
+      "intervals": [
+        {
+          "start": "09:00",
+          "end": "12:00",
+          "type": "base"
+        },
+        {
+          "start": "16:00",
+          "end": "20:00",
           "type": "base"
         }
       ],
       "total_hours_off": 7.0
     },
-    "6.2": {
+    "6.1": {
       "intervals": [
         {
-          "start": "06:00",
-          "end": "08:00",
+          "start": "09:00",
+          "end": "13:00",
           "type": "base"
         },
         {
-          "start": "12:00",
-          "end": "16:00",
-          "type": "base"
-        },
-        {
-          "start": "22:00",
-          "end": "24:00",
+          "start": "16:00",
+          "end": "20:00",
           "type": "base"
         }
       ],
       "total_hours_off": 8.0
+    },
+    "6.2": {
+      "intervals": [
+        {
+          "start": "00:00",
+          "end": "02:00",
+          "type": "base"
+        },
+        {
+          "start": "09:00",
+          "end": "13:00",
+          "type": "base"
+        },
+        {
+          "start": "16:00",
+          "end": "20:00",
+          "type": "base"
+        }
+      ],
+      "total_hours_off": 10.0
     }
   },
   "previous_schedules": [
     {
-      "operational_message": "За розпорядженням НЕК «Укренерго» оновлено графік погодинних відключень (ГПВ) на 25.11.2026 р. (оновлено 23:35).",
+      "operational_message": "За розпорядженням НЕК «Укренерго» 26.11.2026 р. на Хмельниччині будуть застосовані графіки погодинних відключень (ГПВ).",
       "queues": {
         "1.1": {
           "intervals": [
@@ -244,23 +244,28 @@
               "type": "base"
             },
             {
-              "start": "16:00",
-              "end": "20:00",
+              "start": "12:00",
+              "end": "16:00",
+              "type": "base"
+            },
+            {
+              "start": "19:00",
+              "end": "22:00",
               "type": "base"
             }
           ],
-          "total_hours_off": 7.0
+          "total_hours_off": 10.0
         },
         "1.2": {
           "intervals": [
             {
-              "start": "06:00",
-              "end": "09:00",
+              "start": "12:00",
+              "end": "17:00",
               "type": "base"
             },
             {
-              "start": "16:00",
-              "end": "20:00",
+              "start": "22:00",
+              "end": "24:00",
               "type": "base"
             }
           ],
@@ -269,343 +274,8 @@
         "2.1": {
           "intervals": [
             {
-              "start": "03:00",
-              "end": "06:00",
-              "type": "base"
-            },
-            {
-              "start": "09:00",
-              "end": "12:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
+              "start": "15:00",
               "end": "19:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 9.0
-        },
-        "2.2": {
-          "intervals": [
-            {
-              "start": "00:00",
-              "end": "03:00",
-              "type": "base"
-            },
-            {
-              "start": "09:00",
-              "end": "12:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "19:00",
-              "type": "base"
-            },
-            {
-              "start": "22:00",
-              "end": "24:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 11.0
-        },
-        "3.1": {
-          "intervals": [
-            {
-              "start": "03:00",
-              "end": "06:00",
-              "type": "base"
-            },
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "19:00",
-              "end": "22:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 10.0
-        },
-        "3.2": {
-          "intervals": [
-            {
-              "start": "08:00",
-              "end": "12:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "19:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "4.1": {
-          "intervals": [
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "19:00",
-              "end": "22:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "4.2": {
-          "intervals": [
-            {
-              "start": "00:00",
-              "end": "03:00",
-              "type": "base"
-            },
-            {
-              "start": "08:00",
-              "end": "12:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "19:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 10.0
-        },
-        "5.1": {
-          "intervals": [
-            {
-              "start": "03:00",
-              "end": "06:00",
-              "type": "base"
-            },
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "19:00",
-              "end": "22:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 10.0
-        },
-        "5.2": {
-          "intervals": [
-            {
-              "start": "00:00",
-              "end": "03:00",
-              "type": "base"
-            },
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "22:00",
-              "end": "24:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 9.0
-        },
-        "6.1": {
-          "intervals": [
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "19:00",
-              "end": "22:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "6.2": {
-          "intervals": [
-            {
-              "start": "06:00",
-              "end": "08:00",
-              "type": "base"
-            },
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "22:00",
-              "end": "24:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 8.0
-        }
-      }
-    },
-    {
-      "operational_message": "За розпорядженням НЕК «Укренерго» 25.11.2026 р. на Хмельниччині будуть застосовані графіки погодинних відключень (ГПВ).",
-      "queues": {
-        "1.1": {
-          "intervals": [
-            {
-              "start": "06:00",
-              "end": "09:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "20:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "1.2": {
-          "intervals": [
-            {
-              "start": "06:00",
-              "end": "09:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "20:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "2.1": {
-          "intervals": [
-            {
-              "start": "09:00",
-              "end": "12:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "19:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 6.0
-        },
-        "2.2": {
-          "intervals": [
-            {
-              "start": "09:00",
-              "end": "12:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "19:00",
-              "type": "base"
-            },
-            {
-              "start": "22:00",
-              "end": "24:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 8.0
-        },
-        "3.1": {
-          "intervals": [
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "19:00",
-              "end": "22:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "3.2": {
-          "intervals": [
-            {
-              "start": "08:00",
-              "end": "12:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "19:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "4.1": {
-          "intervals": [
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "19:00",
-              "end": "22:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "4.2": {
-          "intervals": [
-            {
-              "start": "08:00",
-              "end": "12:00",
-              "type": "base"
-            },
-            {
-              "start": "16:00",
-              "end": "19:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "5.1": {
-          "intervals": [
-            {
-              "start": "12:00",
-              "end": "16:00",
-              "type": "base"
-            },
-            {
-              "start": "19:00",
-              "end": "22:00",
-              "type": "base"
-            }
-          ],
-          "total_hours_off": 7.0
-        },
-        "5.2": {
-          "intervals": [
-            {
-              "start": "12:00",
-              "end": "16:00",
               "type": "base"
             },
             {
@@ -616,11 +286,16 @@
           ],
           "total_hours_off": 6.0
         },
-        "6.1": {
+        "2.2": {
           "intervals": [
             {
+              "start": "06:00",
+              "end": "09:00",
+              "type": "base"
+            },
+            {
               "start": "12:00",
-              "end": "16:00",
+              "end": "15:00",
               "type": "base"
             },
             {
@@ -629,23 +304,138 @@
               "type": "base"
             }
           ],
-          "total_hours_off": 7.0
+          "total_hours_off": 9.0
         },
-        "6.2": {
+        "3.1": {
           "intervals": [
             {
-              "start": "06:00",
-              "end": "08:00",
+              "start": "09:00",
+              "end": "12:00",
               "type": "base"
             },
             {
-              "start": "12:00",
-              "end": "16:00",
+              "start": "15:00",
+              "end": "19:00",
               "type": "base"
             },
             {
               "start": "22:00",
               "end": "24:00",
+              "type": "base"
+            }
+          ],
+          "total_hours_off": 9.0
+        },
+        "3.2": {
+          "intervals": [
+            {
+              "start": "06:00",
+              "end": "09:00",
+              "type": "base"
+            },
+            {
+              "start": "13:00",
+              "end": "16:00",
+              "type": "base"
+            },
+            {
+              "start": "20:00",
+              "end": "22:00",
+              "type": "base"
+            }
+          ],
+          "total_hours_off": 8.0
+        },
+        "4.1": {
+          "intervals": [
+            {
+              "start": "06:00",
+              "end": "09:00",
+              "type": "base"
+            },
+            {
+              "start": "13:00",
+              "end": "16:00",
+              "type": "base"
+            },
+            {
+              "start": "20:00",
+              "end": "22:00",
+              "type": "base"
+            }
+          ],
+          "total_hours_off": 8.0
+        },
+        "4.2": {
+          "intervals": [
+            {
+              "start": "13:00",
+              "end": "15:00",
+              "type": "base"
+            },
+            {
+              "start": "17:00",
+              "end": "20:00",
+              "type": "base"
+            }
+          ],
+          "total_hours_off": 5.0
+        },
+        "5.1": {
+          "intervals": [
+            {
+              "start": "08:00",
+              "end": "12:00",
+              "type": "base"
+            },
+            {
+              "start": "16:00",
+              "end": "20:00",
+              "type": "base"
+            }
+          ],
+          "total_hours_off": 8.0
+        },
+        "5.2": {
+          "intervals": [
+            {
+              "start": "09:00",
+              "end": "12:00",
+              "type": "base"
+            },
+            {
+              "start": "16:00",
+              "end": "20:00",
+              "type": "base"
+            }
+          ],
+          "total_hours_off": 7.0
+        },
+        "6.1": {
+          "intervals": [
+            {
+              "start": "09:00",
+              "end": "13:00",
+              "type": "base"
+            },
+            {
+              "start": "16:00",
+              "end": "20:00",
+              "type": "base"
+            }
+          ],
+          "total_hours_off": 8.0
+        },
+        "6.2": {
+          "intervals": [
+            {
+              "start": "09:00",
+              "end": "13:00",
+              "type": "base"
+            },
+            {
+              "start": "16:00",
+              "end": "20:00",
               "type": "base"
             }
           ],
