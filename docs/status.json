@@ -1,12 +1,13 @@
 {
   "source": "https://hoe.com.ua/page/pogodinni-vidkljuchennja",
-  "last_updated": "2026-11-26T00:21:56.011928+02:00",
-  "schedule_hash": "acf753145382b5fe",
-  "latest_date": "2026-11-26",
-  "today_date": "2026-11-26",
+  "last_updated": "2026-11-27T00:05:32.259008+02:00",
+  "schedule_hash": "f329049d97f3ae1e",
+  "latest_date": "2026-11-27",
+  "today_date": "2026-11-27",
   "tomorrow_date": null,
   "has_tomorrow": false,
   "available_dates": [
+    "2026-11-27",
     "2026-11-26",
     "2026-11-25",
     "2026-11-24",
